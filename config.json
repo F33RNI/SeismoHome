@@ -1,0 +1,51 @@
+{
+    "__comment01__": "SERIAL PORT OF SEISMOGRAPH AND BAUD RATE",
+    "serial_port": "COM4",
+    "serial_baud_rate": 115200,
+
+    "__comment02__": "INTERVAL (IN SECONDS) FOR SENDING PACKETS TO THE SEISMOGRAPH",
+    "send_data_period": 0.1,
+
+    "__comment03__": "CONVERSION FROM SEISMOGRAPH DATA TO ACCELERATION (m/s^2)",
+    "acceleration_data_range_min": -32768.0,
+    "acceleration_data_range_max": 32767.0,
+    "acceleration_mss_range_min": -19.6133,
+    "acceleration_mss_range_max": 19.6133,
+
+    "__comment04__": "LOW AND HIGH-PASS FILTER CUTOFF FREQUENCIES TO REMOVE EARTH ACCELERATION, ZERO DRIFT AND NOISE",
+    "low_pass_filter_cutoff": 15,
+    "high_pass_filter_cutoff": 0.1,
+
+    "__comment05__": "FOR HOW MANY CHUNKS (SECONDS) INTENSITY MUST EXCEED THE LOW THRESHOLD TO START ALARM",
+    "alarm_low_threshold_chunks": 3,
+
+    "__comment06__": "FOR HOW MANY CHUNKS (SECONDS) INTENSITY MUST EXCEED THE HIGH THRESHOLD TO START ALARM",
+    "alarm_high_threshold_chunks": 2,
+
+    "__comment07__": "ORDER OF LOW AND HIGH-PASS FILTERS",
+    "filters_order": 7,
+
+    "__comment08__": "MUST BE EQUAL TO REAL IMU SAMPLING RATE. CHUNK SIZE WILL BE EQUAL TO THAT VALUE, SO 1 CHUNK = 1S",
+    "sampling_rate": 40,
+
+    "__comment09__": "TIME (IN SECONDS) TO WAIT BEFORE PERFORMING INTENSITY CALIBRATION AFTER FIRST START",
+    "calibration_initial_delay": 10,
+
+    "__comment10__": "TIME (IN SECONDS) TO WAIT BEFORE PERFORMING INTENSITY CALIBRATION AFTER BUTTON PRESS",
+    "calibration_button_delay": 2,
+
+    "__comment11__": "CHUNKS (ALSO SECONDS) TO COLLECT INTENSITY CALIBRATION DATA",
+    "calibration_chunks": 10,
+
+    "__comment12__": "DIRECTORY WHERE TO SAVE RECORDED RAW DATA",
+    "samples_directory": "data",
+
+    "__comment13__": "LIMIT FILE SIZES TO 50MB (52428800 / (12bytes * 40sps * 3600s) = ~30.3 hours @ 40sps)",
+    "limit_size_to_bytes": 52428800,
+
+    "__comment14__": "DEFAULT IP FOR FLASK SERVER. USE 0.0.0.0 TO RUN ON LOCALHOST AND NETWORK AT THE SAME TIME",
+    "flask_server_host": "0.0.0.0",
+
+    "__comment15__": "DEFAULT PORT FLASK SERVER. USE 5000 IF YOU ARE NOT ROOT",
+    "flask_server_port": 80
+}

@@ -1,0 +1,132 @@
+"""
+ Copyright (C) 2023 Fern Lane, SeismoHome earthquake detector project
+ Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+       https://www.gnu.org/licenses/agpl-3.0.en.html
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ OTHER DEALINGS IN THE SOFTWARE.
+"""
+
+import json
+import logging
+import multiprocessing
+import os
+import sys
+
+import DataProcessor
+import SerialHandler
+import WebHandler
+
+__version__ = "1.0.0"
+
+# Files with settings
+CONFIG_FILE = "config.json"
+ALARM_CONFIG_FILE = "alarm_config.json"
+
+# Logging level
+LOGGING_LEVEL = logging.INFO
+
+
+def logging_setup() -> None:
+    """
+    Sets up logging format and level
+    :return:
+    """
+    # Get current PID as string
+    pid_str = str(multiprocessing.current_process().pid)
+
+    # Create logs formatter
+    log_formatter = logging.Formatter("[%(asctime)s] [" + "{:<8}".format(pid_str) + "] [%(levelname)-8s] %(message)s",
+                                      datefmt="%Y-%m-%d %H:%M:%S")
+
+    # Setup logging into console
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(log_formatter)
+
+    # Add all handlers and setup level
+    root_logger = logging.getLogger()
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(LOGGING_LEVEL)
+
+    # Log test message
+    logging.info("Logging setup is complete for PID: " + pid_str)
+
+
+def load_json(file_name: str):
+    """
+    Loads json from file_name
+    :return: json if loaded or empty json if not
+    """
+    try:
+        if os.path.exists(file_name):
+            logging.info("Loading " + file_name)
+            messages_file = open(file_name, encoding="utf-8")
+            json_content = json.load(messages_file)
+            messages_file.close()
+            if json_content is not None and len(str(json_content)) > 0:
+                logging.info("Loaded json: " + str(json_content))
+            else:
+                json_content = None
+                logging.error("Error loading json data from file " + file_name)
+        else:
+            logging.warning("No " + file_name + " file! Returning empty json")
+            return {}
+    except Exception as e:
+        json_content = None
+        logging.error("Error loading JSON file!", exc_info=e)
+    if json_content is None:
+        json_content = {}
+    return json_content
+
+
+def save_json(file_name: str, content):
+    """
+    Saves json data to file
+    :param file_name: filename to save
+    :param content: JSON dictionary
+    :return:
+    """
+    logging.info("Saving to " + file_name)
+    file = open(file_name, "w")
+    json.dump(content, file, indent=4)
+    file.close()
+
+
+def main() -> None:
+    # Initialize logging
+    logging_setup()
+
+    # Log software version and GitHub link
+    logging.info("Simple Earthquake Detector (SED) version: " + str(__version__))
+    logging.info("https://github.com/F33RNI/SeismoHome")
+
+    # Read and parse settings from config file
+    config = load_json(CONFIG_FILE)
+
+    # Start serial handler as process
+    serial_handler = SerialHandler.SerialHandler(config)
+    serial_handler_process = multiprocessing.Process(target=serial_handler.start)
+    serial_handler_process.start()
+    logging.info("SerialHandled PID: " + str(serial_handler_process.pid))
+
+    # Start web handler as process
+    web_handler = WebHandler.WebHandler(config)
+    web_handler_process = multiprocessing.Process(target=web_handler.server_start)
+    web_handler_process.start()
+    logging.info("WebHandler PID: " + str(web_handler_process.pid))
+
+    # Start data processor in the main thread
+    data_processor = DataProcessor.DataProcessor(config, serial_handler, web_handler)
+    data_processor.processor_loop()
+
+
+if __name__ == "__main__":
+    main()

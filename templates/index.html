@@ -1,0 +1,145 @@
+<!--
+   - Copyright (C) 2023 Fern Lane, SeismoHome earthquake detector project
+   - This software is part of Autonomous Multirotor Landing System (AMLS) Project
+   -
+   - Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
+   - you may not use this file except in compliance with the License.
+   - You may obtain a copy of the License at
+   -
+   -      https://www.gnu.org/licenses/agpl-3.0.en.html
+   -
+   - Unless required by applicable law or agreed to in writing, software
+   - distributed under the License is distributed on an "AS IS" BASIS,
+   - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   - See the License for the specific language governing permissions and
+   - limitations under the License.
+   -
+   - IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   - OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   - ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   - OTHER DEALINGS IN THE SOFTWARE. -->
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>SeismoHome</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+        <!-- Favicon -->
+        <link rel="apple-touch-icon" sizes="180x180" href="{{url_for('static', filename='apple-touch-icon.png')}}">
+        <link rel="icon" type="image/png" sizes="32x32" href="{{url_for('static', filename='favicon-32x32.png')}}">
+        <link rel="icon" type="image/png" sizes="16x16" href="{{url_for('static', filename='favicon-16x16.png')}}">
+        <link rel="manifest" href="{{url_for('static', filename='site.webmanifest')}}">
+
+        <!-- Stylesheet -->
+		<link rel="stylesheet" type="text/css" href="{{url_for('static', filename='stylesheet.css')}}"/>
+
+        <!-- https://github.com/leeoniya/uPlot -->
+        <script type="text/javascript" src="{{url_for('static', filename='uPlot/uPlot.iife.js')}}"></script>
+        <link rel="stylesheet" type="text/css" href="{{url_for('static', filename='uPlot/uPlot.min.css')}}"/>
+
+        <!-- https://github.com/timothygebhard/js-colormaps -->
+        <script type="text/javascript" src="{{url_for('static', filename='js-colormaps.js')}}"></script>
+
+        <!-- Main JS script -->
+		<script type="text/javascript" src="{{url_for('static', filename='index.js')}}"></script>
+    </head>
+    <body>
+        <div class="main-container">
+            <!-- Title -->
+            <div class="sub-container headers-container">
+                <h3>SeismoHome</h3>
+            </div>
+
+            <!-- Status fields -->
+            <div class="sub-container headers-container">
+                <h3 style="float: left"><a>JMA Intensity: </a><a id="intensity-jma">-</a><a> / 7</a></h3>
+                <h3 style="float: left"><a>MSK Intensity: </a><a id="intensity-msk">-</a><a> / 12</a></h3>
+                <h3 style="float: left"><a>Alarm: </a><a id="alarm-state">-</a></h3>
+
+                <h3 style="float: left"><a>Battery: </a><a id="battery-voltage">-</a><a>V </a>
+                    <a id="battery-state">-</a></h3>
+                <h3 style="float: left"><a>Temperature: </a><a id="temperature">-</a><a>&#176;C</a></h3>
+            </div>
+
+            <!-- Alarm and virtual hardware buttons -->
+            <div class="sub-container">
+                <button id="button-test" onclick="testAlarm()">Test low alarm</button>
+                <button id="button-hardware" onclick="virtualButtonClick()">Close file & calibrate</button>
+            </div>
+
+            <!-- Sliders for controlling data size and alarm thresholds / time -->
+            <div class="sub-container">
+                <div class="slider-container">
+                    <label for="data-size" class="slider-label">Display data size:</label>
+                    <input type="range" min="100" max="3500" class="slider" id="data-size">
+                    <a id="data-size-label" class="slider-label">-</a>
+                </div>
+
+                <div class="slider-container">
+                    <label for="intensity-low-threshold" class="slider-label">Low alarm threshold (JMA):</label>
+                    <input type="range" min="5" max="70" class="slider" id="intensity-low-threshold">
+                    <a id="intensity-low-threshold-label" class="slider-label">-</a><a class="slider-label"> / 7</a>
+                </div>
+
+                <div class="slider-container">
+                    <label for="intensity-high-threshold" class="slider-label">High alarm threshold (JMA):</label>
+                    <input type="range" min="5" max="70" class="slider" id="intensity-high-threshold">
+                    <a id="intensity-high-threshold-label" class="slider-label">-</a><a class="slider-label"> / 7</a>
+                </div>
+
+                <div class="slider-container">
+                    <label for="alarm-time-active" class="slider-label">Alarm time active:</label>
+                    <input type="range" min="1" max="120" class="slider" id="alarm-time-active">
+                    <a id="alarm-time-active-label" class="slider-label">-</a><a class="slider-label">s</a>
+                </div>
+            </div>
+
+            <!-- Sample files and actions with them -->
+            <div class="sub-container">
+                <label for="files-selector" class="selector-label">Files:</label>
+                <select id="files-selector" class="files-selector"></select>
+                <button onclick="listFiles()" class="button-file">Refresh</button>
+                <button id="button-file-download-raw" onclick="processFile('raw')" class="button-file">RAW</button>
+                <button id="button-file-download-wav" onclick="processFile('wav')" class="button-file">WAV</button>
+                <button id="button-file-download-csv" onclick="processFile('csv')" class="button-file">SCV</button>
+                <button id="button-file-delete" onclick="processFile('delete')" class="button-file button-file-delete">Delete</button>
+            </div>
+
+            <!-- Accelerations uPlot -->
+            <div class="sub-container">
+                <div id="accelerations-plot"></div>
+            </div>
+
+            <!-- FFT X -->
+            <div class="fft-label">Spectrogram X</div>
+            <div class="sub-container fft-container">
+                <div class="fft-text-top"><a id="fft-text-top-x">-</a><a>Hz</a></div>
+                <div class="fft-text-bottom"><a id="fft-text-bottom-x">-</a><a>Hz</a></div>
+                <canvas id="canvas-x"></canvas>
+            </div>
+
+            <div class="sub-container fft-separator"></div>
+
+            <!-- FFT Y -->
+            <div class="fft-label">Spectrogram Y</div>
+            <div class="sub-container fft-container">
+                <div class="fft-text-top"><a id="fft-text-top-y" >-</a><a>Hz</a></div>
+                <div class="fft-text-bottom"><a id="fft-text-bottom-y">-</a><a>Hz</a></div>
+                <canvas id="canvas-y"></canvas>
+            </div>
+
+            <div class="sub-container fft-separator"></div>
+
+            <!-- FFT Z -->
+            <div class="fft-label">Spectrogram Z</div>
+            <div class="sub-container fft-container">
+                <div class="fft-text-top"><a id="fft-text-top-z">-</a><a>Hz</a></div>
+                <div class="fft-text-bottom"><a id="fft-text-bottom-z">>-</a><a>Hz</a></div>
+                <canvas id="canvas-z"></canvas>
+            </div>
+        </div>
+    </body>
+</html>
