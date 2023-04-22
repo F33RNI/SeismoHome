@@ -1,5 +1,5 @@
 # SeismoHome
-## Simple earthquake detector with alarm, data logging and web interface
+## Simple MPU-6050 based earthquake detector with alarm, data logging and web interface
 
 <div style="width:100%;text-align:center;">
     <p align="center">
