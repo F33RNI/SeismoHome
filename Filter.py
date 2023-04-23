@@ -37,8 +37,6 @@ class Filter:
         for order_n in range(order):
             self.filters.append(_ButterworthFilter(pass_type, sample_rate, cutoff_frequency, resonance))
 
-        pass
-
     def filter(self, input_value: float):
         """
         Filters input_value trough each stage (order)
