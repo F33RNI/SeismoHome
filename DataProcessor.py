@@ -23,10 +23,12 @@ import os.path
 import time
 
 import numpy as np
-import scipy
 
+import Filter
 from SerialHandler import SerialHandler
 from WebHandler import WebHandler
+
+FILTERS_ORDER = 2
 
 CALIBRATION_STATE_NO = 0
 CALIBRATION_STATE_DELAY = 1
@@ -169,15 +171,16 @@ class DataProcessor:
         # Set chunk size = samplerate to make 1s chunks
         chunk_size = sampling_rate
 
-        # High-pass filters for each axis
-        filter_low_pass = scipy.signal.iirfilter(int(self.config["filters_order"]),
-                                                 Wn=float(self.config["low_pass_filter_cutoff"]),
-                                                 fs=sampling_rate, btype="low", ftype="butter")
-        zis_low = [None] * 3
-        filter_high_pass = scipy.signal.iirfilter(int(self.config["filters_order"]),
-                                                  Wn=float(self.config["high_pass_filter_cutoff"]),
-                                                  fs=sampling_rate, btype="high", ftype="butter")
-        zis_high = [None] * 3
+        # Low-pass and high-pass filters for each axis
+        low_pass_filters = []
+        high_pass_filters = []
+        for _ in range(3):
+            low_pass_filters.append(Filter.Filter(Filter.FILTER_TYPE_LOWPASS, sampling_rate,
+                                                  float(self.config["low_pass_filter_cutoff"]),
+                                                  order=FILTERS_ORDER))
+            high_pass_filters.append(Filter.Filter(Filter.FILTER_TYPE_HIGHPASS, sampling_rate,
+                                                   float(self.config["high_pass_filter_cutoff"]),
+                                                   order=FILTERS_ORDER))
 
         # Buffer for incoming data
         chunk = np.zeros((chunk_size, 3), dtype=np.float32)
@@ -218,22 +221,11 @@ class DataProcessor:
 
                 # Filter each axis independently
                 for i in range(3):
-                    # Initialize zi for each axis for real-time data processing
-                    if zis_low[i] is None:
-                        zis_low[i] = scipy.signal.lfilter_zi(filter_low_pass[0], 1) * accelerations[i]
-                    if zis_high[i] is None:
-                        zis_high[i] = scipy.signal.lfilter_zi(filter_high_pass[0], 1) * accelerations[i]
-
                     # Apply low-pass filter
-                    accelerations[i], zis_low[i] = scipy.signal.lfilter(filter_low_pass[0],
-                                                                        filter_low_pass[1],
-                                                                        [accelerations[i]],
-                                                                        zi=zis_low[i])
+                    accelerations[i] = low_pass_filters[i].filter(accelerations[i])
+
                     # Apply high-pass filter
-                    accelerations[i], zis_high[i] = scipy.signal.lfilter(filter_high_pass[0],
-                                                                         filter_high_pass[1],
-                                                                         [accelerations[i]],
-                                                                         zi=zis_high[i])
+                    accelerations[i] = high_pass_filters[i].filter(accelerations[i])
 
                 # Check json queue
                 if not self.web_handler.json_packets_queue.full():

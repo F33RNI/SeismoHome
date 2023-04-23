@@ -16,4 +16,50 @@
 
 ## README IN PROGRESS...
 
+### PART 1. Preparation for low-performance systems
+
+Install required packets
+```shell
+sudo apt-get update
+sudo apt-get install git, python3, python3-pip, cmake
+sudo apt-get install python3-dev python3-pip gfortran libblas-dev liblapack-dev libatlas-base-dev
+sudo apt-get install libopenblas-dev pkg-config
+```
+
+Increase size of /tmp
+```shell
+df -h /tmp
+sudo mount -o remount,size=2G /tmp/
+```
+
+Edit swap config to increase swap size
+```shell
+sudo apt-get install dphys-swapfile
+sudo dphys-swapfile swapoff
+sudo nano /etc/dphys-swapfile
+```
+
+Uncomment and set values of `CONF_SWAPSIZE` and `CONF_MAXSWAP` to `2048`
+```shell
+CONF_SWAPSIZE=2048
+CONF_MAXSWAP=2048
+```
+
+Apply changes
+```shell
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
+### PART 2. Repo cloning and installing libraries
+
+Clone repo and install requirements
+```shell
+git clone https://github.com/F33RNI/SeismoHome
+cd SeismoHome
+sudo pip3 install -r requirements.txt
+```
+
+### PART 3
+
 
