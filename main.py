@@ -25,6 +25,7 @@ import DataProcessor
 import SerialHandler
 import WebHandler
 
+# Version of SeismoHome
 __version__ = "1.0.0"
 
 # Files with settings
@@ -101,6 +102,10 @@ def save_json(file_name: str, content):
 
 
 def main() -> None:
+    # Multiprocessing fix for Windows
+    if sys.platform.startswith("win"):
+        multiprocessing.freeze_support()
+
     # Initialize logging
     logging_setup()
 
@@ -129,6 +134,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    if sys.platform.startswith("win"):
-        multiprocessing.freeze_support()
     main()
