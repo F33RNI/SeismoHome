@@ -29,6 +29,7 @@ from queue import Empty
 from flask import Flask, Response, render_template, request, stream_with_context
 
 import DataProcessor
+from main import __version__
 
 FILE_CHUNK_SIZE = 2048
 
@@ -477,7 +478,7 @@ class WebHandler:
         :return: index.html content
         """
         # Send content of index page
-        return render_template("index.html")
+        return render_template("index.html", version=__version__)
 
     def server_start(self):
         """
