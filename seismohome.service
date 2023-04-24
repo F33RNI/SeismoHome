@@ -6,7 +6,7 @@ After=multi-user.target
 Type=simple
 Restart=always
 WorkingDirectory=YOUR DIRECTORY HERE/SeismoHome
-ExecStart=YOUR DIRECTORY HERE/SeismoHome/run.sh
+ExecStart=sudo bash YOUR DIRECTORY HERE/SeismoHome/run.sh
 RestartSec=5
 
 [Install]
