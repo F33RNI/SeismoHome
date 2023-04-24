@@ -175,116 +175,128 @@ class SerialHandler:
                         time.sleep(1)
 
                 # Read one byte from serial port
-                rx_buffer[rx_buffer_cursor] = ord(self.serial_port.read())
+                serial_byte = self.serial_port.read()
 
-                #  Consider packet end if we have at least 2 bytes and current byte is EOT and previous byte was not ESC
-                if rx_buffer_cursor > 0 \
-                        and rx_buffer[rx_buffer_cursor] == PACKET_EOT and rx_buffer[rx_buffer_cursor - 1] != PACKET_ESC:
+                # Check length (timeout)
+                if len(serial_byte) > 0:
+                    # Convert to int
+                    rx_buffer[rx_buffer_cursor] = ord(serial_byte)
 
-                    # Parse packet only if we have at least RX_PACKET_SIZE bytes + 1 EOT byte
-                    if rx_buffer_cursor > len(rx_packet):
+                    # Consider packet end if we have at least 2 bytes
+                    # and current byte is EOT and previous byte was not ESC
+                    if rx_buffer_cursor > 0 \
+                            and rx_buffer[rx_buffer_cursor] == PACKET_EOT \
+                            and rx_buffer[rx_buffer_cursor - 1] != PACKET_ESC:
 
-                        # Try to find packet start by searching for SOH without escaping byte
-                        rx_buffer_start = 0
-                        for i in range(rx_buffer_cursor):
-                            # SOH at the first byte, so packet starts from 1 (because we don't need to parse SOH byte)
-                            if i == 0 and rx_buffer[i] == PACKET_SOH:
-                                rx_buffer_start = 1
-                                break
+                        # Parse packet only if we have at least RX_PACKET_SIZE bytes + 1 EOT byte
+                        if rx_buffer_cursor > len(rx_packet):
 
-                            # SOH without previous ESC, so packet starts from i + 1
-                            # (because we don't need to parse SOH byte)
-                            if i > 0 and rx_buffer[i - 1] != PACKET_ESC and rx_buffer[i] == PACKET_SOH:
-                                rx_buffer_start = i + 1
-                                break
-
-                        # Check if we successfully found packet start
-                        if rx_buffer_start > 0 and rx_buffer_start + len(rx_packet) <= len(rx_buffer):
-
-                            # Try to extract packet (without escaping bytes) and calculate checksum at the same time
-                            # Stop at rx_buffer_cursor - 2 (Last two bytes are checksum byte and EOT)
-                            rx_packet_cursor = 0
-                            check_byte = 0
-                            i = rx_buffer_start
-                            while i <= rx_buffer_cursor - 2:
-                                # Stop if we have all packet bytes
-                                if rx_packet_cursor >= len(rx_packet):
+                            # Try to find packet start by searching for SOH without escaping byte
+                            rx_buffer_start = 0
+                            for i in range(rx_buffer_cursor):
+                                # SOH at the first byte, so packet starts from 1
+                                # (because we don't need to parse SOH byte)
+                                if i == 0 and rx_buffer[i] == PACKET_SOH:
+                                    rx_buffer_start = 1
                                     break
 
-                                # We found escape byte
-                                if rx_buffer[i] == PACKET_ESC:
-                                    # Stop if we have escape byte before checksum byte
-                                    if i + 1 == rx_buffer_cursor - 1:
+                                # SOH without previous ESC, so packet starts from i + 1
+                                # (because we don't need to parse SOH byte)
+                                if i > 0 and rx_buffer[i - 1] != PACKET_ESC and rx_buffer[i] == PACKET_SOH:
+                                    rx_buffer_start = i + 1
+                                    break
+
+                            # Check if we successfully found packet start
+                            if rx_buffer_start > 0 and rx_buffer_start + len(rx_packet) <= len(rx_buffer):
+
+                                # Try to extract packet (without escaping bytes) and calculate checksum at the same time
+                                # Stop at rx_buffer_cursor - 2 (Last two bytes are checksum byte and EOT)
+                                rx_packet_cursor = 0
+                                check_byte = 0
+                                i = rx_buffer_start
+                                while i <= rx_buffer_cursor - 2:
+                                    # Stop if we have all packet bytes
+                                    if rx_packet_cursor >= len(rx_packet):
                                         break
 
-                                    # Append next byte to packet
-                                    rx_packet[rx_packet_cursor] = rx_buffer[i + 1]
+                                    # We found escape byte
+                                    if rx_buffer[i] == PACKET_ESC:
+                                        # Stop if we have escape byte before checksum byte
+                                        if i + 1 == rx_buffer_cursor - 1:
+                                            break
+
+                                        # Append next byte to packet
+                                        rx_packet[rx_packet_cursor] = rx_buffer[i + 1]
+                                        rx_packet_cursor += 1
+
+                                        # Calculate checksum using only next byte
+                                        check_byte = (check_byte ^ rx_buffer[i + 1]) & 0xFF
+
+                                        # Skip one cycle
+                                        i += 1
+
+                                        # Skip normal calculation
+                                        i += 1
+                                        continue
+
+                                    # Append data byte
+                                    rx_packet[rx_packet_cursor] = rx_buffer[i]
                                     rx_packet_cursor += 1
 
-                                    # Calculate checksum using only next byte
-                                    check_byte = (check_byte ^ rx_buffer[i + 1]) & 0xFF
+                                    # Calculate checksum normally (no previous escape byte)
+                                    check_byte = (check_byte ^ rx_buffer[i]) & 0xFF
 
-                                    # Skip one cycle
+                                    # Go to next loop cycle
                                     i += 1
 
-                                    # Skip normal calculation
-                                    i += 1
-                                    continue
+                                # Check if checksum match
+                                if check_byte == rx_buffer[rx_buffer_cursor - 1]:
+                                    # Parse accelerations data
+                                    acc_x = int.from_bytes(bytearray(rx_packet[0: 2]), byteorder="big", signed=True)
+                                    acc_y = int.from_bytes(bytearray(rx_packet[2: 4]), byteorder="big", signed=True)
+                                    acc_z = int.from_bytes(bytearray(rx_packet[4: 6]), byteorder="big", signed=True)
 
-                                # Append data byte
-                                rx_packet[rx_packet_cursor] = rx_buffer[i]
-                                rx_packet_cursor += 1
+                                    # Convert to m/s^2
+                                    acc_x = self.acceleration_to_mss(acc_x)
+                                    acc_y = self.acceleration_to_mss(acc_y)
+                                    acc_z = self.acceleration_to_mss(acc_z)
 
-                                # Calculate checksum normally (no previous escape byte)
-                                check_byte = (check_byte ^ rx_buffer[i]) & 0xFF
+                                    # Parse battery voltage
+                                    self.battery_voltage_mv.value \
+                                        = int.from_bytes(bytearray(rx_packet[6: 8]), byteorder="big", signed=False)
 
-                                # Go to next loop cycle
-                                i += 1
+                                    # Parse power state
+                                    self.power_state.value = rx_packet[8]
 
-                            # Check if checksum match
-                            if check_byte == rx_buffer[rx_buffer_cursor - 1]:
-                                # Parse accelerations data
-                                acc_x = int.from_bytes(bytearray(rx_packet[0: 2]), byteorder="big", signed=True)
-                                acc_y = int.from_bytes(bytearray(rx_packet[2: 4]), byteorder="big", signed=True)
-                                acc_z = int.from_bytes(bytearray(rx_packet[4: 6]), byteorder="big", signed=True)
+                                    # Parse battery low flag
+                                    self.battery_low.value = rx_packet[9] > 0
 
-                                # Convert to m/s^2
-                                acc_x = self.acceleration_to_mss(acc_x)
-                                acc_y = self.acceleration_to_mss(acc_y)
-                                acc_z = self.acceleration_to_mss(acc_z)
+                                    # Parse temperature in Celsius degrees
+                                    self.temperature.value = (rx_packet[10] + 128) % 256 - 128
 
-                                # Parse battery voltage
-                                self.battery_voltage_mv.value \
-                                    = int.from_bytes(bytearray(rx_packet[6: 8]), byteorder="big", signed=False)
+                                    # Parse button pressed flag
+                                    self.button_flag.value = rx_packet[11] > 0
 
-                                # Parse power state
-                                self.power_state.value = rx_packet[8]
+                                    # Append accelerations data to the queue as numpy array
+                                    self.accelerations_queue.put(np.array([acc_x, acc_y, acc_z], dtype=np.float32))
 
-                                # Parse battery low flag
-                                self.battery_low.value = rx_packet[9] > 0
+                                else:
+                                    logging.warning("Wrong packet checksum!")
 
-                                # Parse temperature in Celsius degrees
-                                self.temperature.value = (rx_packet[10] + 128) % 256 - 128
-
-                                # Parse button pressed flag
-                                self.button_flag.value = rx_packet[11] > 0
-
-                                # Append accelerations data to the queue as numpy array
-                                self.accelerations_queue.put(np.array([acc_x, acc_y, acc_z], dtype=np.float32))
-
-                            else:
-                                logging.warning("Wrong packet checksum!")
-
-                    # Reset bytes counter
-                    rx_buffer_cursor = 0
-
-                else:
-                    # Increment bytes counter
-                    rx_buffer_cursor += 1
-
-                    # Reset buffer position on overflow
-                    if rx_buffer_cursor >= len(rx_buffer):
+                        # Reset bytes counter
                         rx_buffer_cursor = 0
+
+                    else:
+                        # Increment bytes counter
+                        rx_buffer_cursor += 1
+
+                        # Reset buffer position on overflow
+                        if rx_buffer_cursor >= len(rx_buffer):
+                            rx_buffer_cursor = 0
+
+                # 0 bytes received
+                else:
+                    logging.error("Received 0 bytes. Perhaps a timeout?")
 
             # Exit requested
             except KeyboardInterrupt:
