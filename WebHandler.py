@@ -374,11 +374,17 @@ class WebHandler:
                                 and filename_parts[3] == "3ch" \
                                 and filename_parts[4] == "float32" \
                                 and filename_parts[5] == "l_endian":
-                            # Get timestamp
-                            timestamp_seconds \
-                                = int(time.mktime(datetime.datetime.strptime(filename_parts[0] + "__" +
-                                                                             filename_parts[1],
-                                                                             "%Y_%m_%d__%H_%M_%S").timetuple()))
+
+                            # Parse datetime string into a datetime object in UTC
+                            dt_utc = datetime.datetime.strptime(filename_parts[0] + "__" + filename_parts[1],
+                                                                "%Y_%m_%d__%H_%M_%S").replace(tzinfo=None)
+
+                            # Convert datetime object from UTC to local time
+                            tz_offset = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
+                            dt_local = dt_utc - datetime.timedelta(seconds=tz_offset)
+
+                            # Get timestamp in seconds
+                            timestamp_seconds = int(dt_local.timestamp())
 
                             # Get file sampling rate
                             sampling_rate = int(str(filename_parts[2]).lower().replace("sps", "").strip())
