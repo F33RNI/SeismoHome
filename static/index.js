@@ -48,6 +48,9 @@ let accelerationsPlotYRangeFixedPrev = true;
 let canvasX = null;
 let canvasY = null;
 let canvasZ = null;
+let canvasXContext = null;
+let canvasYContext = null;
+let canvasZContext = null;
 
 // Alarm config as object (JSON)
 let alarmConfig = null;
@@ -128,16 +131,14 @@ function rgbToHex(r, g, b) {
  * @param {Array} newData New fft data in JMA scale (0-7)
  * @param {Array} dataArray Array to append to
  * @param {HTMLCanvasElement} canvas FFT canvas
+ * @param {CanvasRenderingContext2D} canvasContext canvas.getContext("2d", { willReadFrequently: true })
  */
-function updateFFTCanvas(newData, dataArray, canvas) {
+function updateFFTCanvas(newData, dataArray, canvas, canvasContext) {
 	// Append new data to array
 	dataArray.push(newData);
 
 	// Check is canvas is available
 	if (canvas != null) {
-		// Get context of canvas
-		const canvasContext = canvas.getContext("2d");
-
 		// Get image from canvas to paste it after resizing and for moving
 		let imageData = null;
 		if (canvas.width > 0) {
@@ -367,12 +368,15 @@ function onLoad() {
 	canvasX = document.getElementById("canvas-x");
 	canvasX.width = 1;
 	canvasX.height = 1;
+	canvasXContext = canvasX.getContext("2d", { willReadFrequently: true });
 	canvasY = document.getElementById("canvas-y");
 	canvasY.width = 1;
 	canvasY.height = 1;
+	canvasYContext = canvasY.getContext("2d", { willReadFrequently: true });
 	canvasZ = document.getElementById("canvas-z");
 	canvasZ.width = 1
 	canvasZ.height = 1;
+	canvasZContext = canvasZ.getContext("2d", { willReadFrequently: true });
 	const intensityLowSlider = document.getElementById("intensity-low-threshold");
 	const intensityHighSlider =  document.getElementById("intensity-high-threshold");
 	const alarmTimeSlider = document.getElementById("alarm-time-active");
@@ -445,6 +449,10 @@ function onLoad() {
 if (!!window.EventSource) {
 	const source = new EventSource("/stream");
 	source.onmessage = function (e) {
+		// Ignore if page elements are not initialized
+		if (accelerationsPlot === null || canvasX === null || canvasY === null || canvasZ === null)
+			return;
+
 		// Parse incoming data as JSON
 		const jsonData = JSON.parse(e.data);
 
@@ -482,9 +490,9 @@ if (!!window.EventSource) {
 		accelerationsPlot.setData(graphData);
 
 		// Update FFTs
-		updateFFTCanvas(jsonData.ffts[0].reverse(), fftDataX, canvasX);
-		updateFFTCanvas(jsonData.ffts[1].reverse(), fftDataY, canvasY);
-		updateFFTCanvas(jsonData.ffts[2].reverse(), fftDataZ, canvasZ);
+		updateFFTCanvas(jsonData.ffts[0].reverse(), fftDataX, canvasX, canvasXContext);
+		updateFFTCanvas(jsonData.ffts[1].reverse(), fftDataY, canvasY, canvasYContext);
+		updateFFTCanvas(jsonData.ffts[2].reverse(), fftDataZ, canvasZ, canvasZContext);
 
 		// Set FFTs range text
 		document.getElementById("fft-text-top-x").innerText
