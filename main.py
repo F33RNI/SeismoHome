@@ -22,6 +22,7 @@ import sys
 import time
 
 import DataProcessor
+import LoggingHandler
 import SerialHandler
 import WebHandler
 
@@ -31,34 +32,6 @@ __version__ = "1.0.0"
 # Files with settings
 CONFIG_FILE = "config.json"
 ALARM_CONFIG_FILE = "alarm_config.json"
-
-# Logging level
-LOGGING_LEVEL = logging.INFO
-
-
-def logging_setup() -> None:
-    """
-    Sets up logging format and level
-    :return:
-    """
-    # Get current PID as string
-    pid_str = str(multiprocessing.current_process().pid)
-
-    # Create logs formatter
-    log_formatter = logging.Formatter("[%(asctime)s] [" + "{:<8}".format(pid_str) + "] [%(levelname)-8s] %(message)s",
-                                      datefmt="%Y-%m-%d %H:%M:%S")
-
-    # Setup logging into console
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_formatter)
-
-    # Add all handlers and setup level
-    root_logger = logging.getLogger()
-    root_logger.addHandler(console_handler)
-    root_logger.setLevel(LOGGING_LEVEL)
-
-    # Log test message
-    logging.info("Logging setup is complete for PID: " + pid_str)
 
 
 def load_json(file_name: str):
@@ -106,8 +79,12 @@ def main() -> None:
     if sys.platform.startswith("win"):
         multiprocessing.freeze_support()
 
-    # Initialize logging
-    logging_setup()
+    # Initialize logging and start listener as process
+    logging_handler = LoggingHandler.LoggingHandler()
+    logging_handler_process = multiprocessing.Process(target=logging_handler.configure_and_start_listener)
+    logging_handler_process.start()
+    LoggingHandler.worker_configurer(logging_handler.queue)
+    logging.info("LoggingHandler PID: " + str(logging_handler_process.pid))
 
     # Log software version and GitHub link
     logging.info("Simple Earthquake Detector (SED) version: " + str(__version__))
@@ -124,13 +101,15 @@ def main() -> None:
 
     # Start web handler as process
     web_handler = WebHandler.WebHandler(config)
-    web_handler_process = multiprocessing.Process(target=web_handler.server_start)
+    web_handler_process = multiprocessing.Process(target=web_handler.server_start,
+                                                  args=(logging_handler.queue,))
     web_handler_process.start()
     logging.info("WebHandler PID: " + str(web_handler_process.pid))
 
     # Start data processor as process
     data_processor = DataProcessor.DataProcessor(config, serial_handler, web_handler)
-    data_processor_process = multiprocessing.Process(target=data_processor.processor_loop)
+    data_processor_process = multiprocessing.Process(target=data_processor.processor_loop,
+                                                     args=(logging_handler.queue,))
     data_processor_process.start()
     logging.info("DataProcessor PID: " + str(web_handler_process.pid))
 
@@ -156,6 +135,7 @@ def main() -> None:
 
     # Exited (I hope)
     logging.warning("I was killed. Bye bye =(")
+    logging_handler.queue.put(None)
 
 
 if __name__ == "__main__":

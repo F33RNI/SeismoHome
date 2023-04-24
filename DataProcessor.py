@@ -14,6 +14,7 @@
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  OTHER DEALINGS IN THE SOFTWARE.
 """
+
 import ctypes
 import datetime
 import json
@@ -27,6 +28,7 @@ from typing import IO
 import numpy as np
 
 import Filter
+import LoggingHandler
 from SerialHandler import SerialHandler
 from WebHandler import WebHandler
 
@@ -162,13 +164,12 @@ class DataProcessor:
         # Open file for writing and return it
         return open(abs_filename, "wb")
 
-    def processor_loop(self):
+    def processor_loop(self, logging_queue: multiprocessing.Queue):
         # Set loop flag
         self.processor_loop_running.Value = True
 
-        # Initialize logging in current process
-        from main import logging_setup
-        logging_setup()
+        # Setup logging for current process
+        LoggingHandler.worker_configurer(logging_queue)
 
         # File IO
         file = None

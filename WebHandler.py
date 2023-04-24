@@ -29,6 +29,7 @@ from queue import Empty
 from flask import Flask, Response, render_template, request, stream_with_context
 
 import DataProcessor
+import LoggingHandler
 from main import __version__
 
 FILE_CHUNK_SIZE = 2048
@@ -467,14 +468,13 @@ class WebHandler:
         # Send content of index page
         return render_template("index.html", version=__version__)
 
-    def server_start(self):
+    def server_start(self, logging_queue: multiprocessing.Queue):
         """
         Starts Flask web server
         :return:
         """
         # Setup logging for current process
-        from main import logging_setup
-        logging_setup()
+        LoggingHandler.worker_configurer(logging_queue)
 
         # Read alarm settings for DataProcessor class
         from main import load_json, ALARM_CONFIG_FILE
