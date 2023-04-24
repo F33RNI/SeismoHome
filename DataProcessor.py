@@ -203,6 +203,8 @@ class DataProcessor:
         msk_current = 0.
         low_intensity_chunks_counter = 0
         high_intensity_chunks_counter = 0
+        jma_file_max = 0.
+        msk_file_max = 0.
 
         # Calibration variables
         calibration_state = CALIBRATION_STATE_NO
@@ -267,6 +269,8 @@ class DataProcessor:
                         "timestamp": round(time.time() * 1000),
                         "intensity_jma": float(jma_current),
                         "intensity_msk": float(msk_current),
+                        "intensity_jma_max": float(jma_file_max),
+                        "intensity_msk_max": float(msk_file_max),
                         "battery_voltage_mv": self.serial_handler.battery_voltage_mv.value,
                         "battery_state": battery_state_str,
                         "temperature": self.serial_handler.temperature.value,
@@ -391,6 +395,12 @@ class DataProcessor:
                     jma_current = np.max(jmas)
                     msk_current = np.max(msks)
 
+                    # Calculate maximum intensity in current file
+                    if jma_current > jma_file_max:
+                        jma_file_max = jma_current
+                    if msk_current > msk_file_max:
+                        msk_file_max = msk_current
+
                     # Starting / stopping alarm
                     if calibration_state == CALIBRATION_STATE_OK:
                         # Count intensities
@@ -460,6 +470,8 @@ class DataProcessor:
                     if file is None:
                         file = self.start_file()
                         file_size_bytes = 0
+                        jma_file_max = 0.
+                        msk_file_max = 0.
 
                     # Write data to file
                     file.write(chunk.tobytes(order="C"))
@@ -481,6 +493,8 @@ class DataProcessor:
                             logging.error("Error closing file!", exc_info=e)
                         file = None
                         self.web_handler.request_file_close.value = False
+                        jma_file_max = 0.
+                        msk_file_max = 0.
 
             # Exit requested
             except KeyboardInterrupt:

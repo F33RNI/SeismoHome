@@ -500,6 +500,8 @@ if (!!window.EventSource) {
 		// Update text data on page
 		document.getElementById("intensity-jma").innerText = jsonData.intensity_jma.toFixed(1);
 		document.getElementById("intensity-msk").innerText = jsonData.intensity_msk.toFixed(1);
+		document.getElementById("intensity-jma-max").innerText = jsonData.intensity_jma_max.toFixed(1);
+		document.getElementById("intensity-msk-max").innerText = jsonData.intensity_msk_max.toFixed(1);
 		document.getElementById("alarm-state").innerText = jsonData.alarm_state;
 		document.getElementById("battery-voltage").innerText =
 			(jsonData.battery_voltage_mv / 1000.).toFixed(2);
