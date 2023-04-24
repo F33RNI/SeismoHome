@@ -1,7 +1,7 @@
 {
-    "__comment01__": "SERIAL PORT OF SEISMOGRAPH AND BAUD RATE",
-    "serial_port": "COM4",
-    "serial_baud_rate": 115200,
+    "__comment01__": "SERIAL PORT OF SEISMOGRAPH AND BAUD RATE (Linux ports are smth like /dev/ttyS0 and windows COM1)",
+    "serial_port": "/dev/ttyS1",
+    "serial_baud_rate": 57600,
 
     "__comment02__": "INTERVAL (IN SECONDS) FOR SENDING PACKETS TO THE SEISMOGRAPH",
     "send_data_period": 0.1,

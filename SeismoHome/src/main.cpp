@@ -84,7 +84,7 @@ inline constexpr unsigned char operator "" _uint8(unsigned long long arg) noexce
 #define RX_WATCHDOG_TIMEOUT   1000U
 
 // Speed of serial port (must be equal to Python program settings)
-#define SERIAL_BAUD_RATE      115200U
+#define SERIAL_BAUD_RATE      57600U
 
 // Starting, ending and escaping bytes in packet
 #define PACKET_SOH            0x01_uint8
