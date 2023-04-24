@@ -275,7 +275,7 @@ class DataProcessor:
                         "battery_state": battery_state_str,
                         "temperature": self.serial_handler.temperature.value,
                         "alarm_state": alarm_state_str,
-                        "calibration_state": self.serial_handler.calibration_state.value,
+                        "calibration_state": calibration_state,
                         "accelerations": chunk[chunk_cursor].tolist(),
                         "ffts": ffts_linspace[:, :, chunk_cursor].tolist(),
                         "fft_range_from": 0,

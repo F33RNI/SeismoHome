@@ -61,6 +61,9 @@ let rawFiles = [];
 // Connect onLoad function
 window.onload = onLoad;
 
+// Calibration states
+const CALIBRATION_STATE_OK = 3;
+
 /**
  * Data container for accelerations plot uPlot
  * @type {{series: [{},{label: string, stroke: string},{label: string, stroke: string},{label: string, stroke: string}], scales: {y: {range: (function(*, *, *): [number,number]|[number,number])}}, axes: [{space: number}], pxAlign: boolean}}
@@ -516,9 +519,19 @@ if (!!window.EventSource) {
 		else
 			alarmTestState = 0;
 
-		// Set virtual button text
-		document.getElementById("button-hardware").innerText = jsonData.alarm_state === "Off" ?
-			"Close file & calibrate" : "Cancel alarm"
+		// Set virtual button text and make it enabled only if alarm or calibrated
+		if (jsonData.alarm_state !== "Off") {
+			document.getElementById("button-hardware").innerText = "Cancel alarm";
+			document.getElementById("button-hardware").disabled = false;
+		}
+		else if (jsonData.calibration_state === CALIBRATION_STATE_OK) {
+			document.getElementById("button-hardware").innerText = "Close file & calibrate";
+			document.getElementById("button-hardware").disabled = false;
+		}
+		else {
+			document.getElementById("button-hardware").innerText = "Close file & calibrate";
+			document.getElementById("button-hardware").disabled = true;
+		}
 
 		// Disable test alarm if it is real alarm, or we reached high test state
 		if ((jsonData.alarm_state !== "Off" && !jsonData.alarm_state.includes("Test")) || alarmTestState >= 2) {
