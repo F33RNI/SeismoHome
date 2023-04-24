@@ -31,6 +31,10 @@ PACKET_ESC = 0x1B
 
 class SerialHandler:
     def __init__(self, config: dict) -> None:
+        """
+        ALL METHODS OF THIS CLASS MUST BE CALLED FROM MAIN PROCESS BECAUSE PYSERIAL DOES NOT WORK WITH MULTIPROCESSING
+        :param config:
+        """
         self.config = config
 
         # Create queue for acceleration data
@@ -48,24 +52,26 @@ class SerialHandler:
         self.clear_button_flag = multiprocessing.Value(ctypes.c_bool, False)
         self.calibration_state = multiprocessing.Value(ctypes.c_uint8, 0)
 
-        self.serial_port = None
+        # Loop running flags
         self.reader_thread_running = False
         self.sender_running = False
+
+        # Thread for reading from serial port
+        self.reader_thread = None
+
+        # Serial port
+        self.serial_port = None
 
     def start(self) -> None:
         """
         Initializes logging and starts reader as thread and start sender loop (blocking)
         :return:
         """
-        # Initialize logging in current process
-        from main import logging_setup
-        logging_setup()
-
         # Start reader thread
         self.reader_thread_running = True
-        reader_thread = threading.Thread(target=self.reader_loop)
-        logging.info("Starting reader_loop() thread with name: " + str(reader_thread.name))
-        reader_thread.start()
+        self.reader_thread = threading.Thread(target=self.reader_loop)
+        logging.info("Starting reader_loop() thread with name: " + str(self.reader_thread.name))
+        self.reader_thread.start()
         time.sleep(1)
 
         # Go and stay into sender loop
@@ -77,12 +83,13 @@ class SerialHandler:
         Stops all threads and closes serial port
         :return:
         """
+        # Stop loops
         self.sender_running = False
         self.reader_thread_running = False
-        try:
-            self.serial_port.close()
-        except:
-            pass
+
+        # Join reader loop
+        if self.reader_thread is not None and self.reader_thread.is_alive():
+            self.reader_thread.join()
 
     def sender_loop(self) -> None:
         """
@@ -129,10 +136,18 @@ class SerialHandler:
                 # Sleep for next cycle
                 time.sleep(float(self.config["send_data_period"]))
 
+            # Exit requested
+            except KeyboardInterrupt:
+                logging.warning("KeyboardInterrupt @ sender_loop()")
+                break
+
             # Oh no, error!
             except Exception as e:
                 logging.error("Error sending data to serial port!", exc_info=e)
                 time.sleep(1)
+
+        # Why are we here?
+        logging.warning("sender_loop() finished!")
 
     def reader_loop(self) -> None:
         """
@@ -153,7 +168,10 @@ class SerialHandler:
             try:
                 # Open serial port
                 if self.serial_port is None or not self.serial_port.isOpen:
-                    while not self.open_port():
+                    is_opened = False
+                    while not is_opened and self.reader_thread_running:
+                        logging.info("Trying to open serial port from reader_loop()")
+                        is_opened = self.open_port()
                         time.sleep(1)
 
                 # Read one byte from serial port
@@ -268,18 +286,33 @@ class SerialHandler:
                     if rx_buffer_cursor >= len(rx_buffer):
                         rx_buffer_cursor = 0
 
+            # Exit requested
+            except KeyboardInterrupt:
+                logging.warning("KeyboardInterrupt @ reader_loop()")
+                break
+
             # Oh no, error!
             except Exception as e:
                 logging.error("Error reading data from serial port!", exc_info=e)
                 time.sleep(1)
 
                 # Try to close serial port
-                try:
-                    logging.info("Trying to close...")
-                    self.serial_port.close()
-                    self.serial_port = None
-                except Exception as e:
-                    logging.error("Error closing serial port!", exc_info=e)
+                if self.serial_port is not None:
+                    try:
+                        logging.info("Closing serial port")
+                        self.serial_port.close()
+                        self.serial_port = None
+                    except Exception as e:
+                        logging.warning("Error closing serial port!", exc_info=e)
+
+        # Try to close serial port
+        if self.serial_port is not None:
+            try:
+                logging.info("Closing serial port")
+                self.serial_port.close()
+                self.serial_port = None
+            except Exception as e:
+                logging.warning("Error closing serial port!", exc_info=e)
 
         # Why are we here?
         logging.warning("reader_loop() finished!")
@@ -293,7 +326,9 @@ class SerialHandler:
             logging.info("Trying to open port " + str(self.config["serial_port"])
                          + " @ " + str(self.config["serial_baud_rate"]))
             self.serial_port = None
-            self.serial_port = serial.Serial(str(self.config["serial_port"]), int(self.config["serial_baud_rate"]))
+            self.serial_port = serial.Serial(str(self.config["serial_port"]),
+                                             int(self.config["serial_baud_rate"]),
+                                             timeout=1)
             self.serial_port.close()
             self.serial_port.open()
             if self.serial_port.isOpen():

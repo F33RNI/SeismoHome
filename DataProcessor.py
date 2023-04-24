@@ -14,13 +14,15 @@
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  OTHER DEALINGS IN THE SOFTWARE.
 """
-
+import ctypes
 import datetime
 import json
 import logging
 import math
+import multiprocessing
 import os.path
 import time
+from typing import IO
 
 import numpy as np
 
@@ -128,13 +130,10 @@ class DataProcessor:
         self.config = config
         self.serial_handler = serial_handler
         self.web_handler = web_handler
+        
+        self.processor_loop_running = multiprocessing.Value(ctypes.c_bool, False)
 
-        self.calibration_state = CALIBRATION_STATE_NO
-        self.processor_loop_running = False
-        self.filename = ""
-        self.file = None
-
-    def start_file(self) -> None:
+    def start_file(self) -> IO:
         """
         Generates new file and opens it for writing in wb mode
         :return:
@@ -151,21 +150,30 @@ class DataProcessor:
         # Finally, add create output directory and to filename
         if not os.path.exists(self.config["samples_directory"]):
             os.makedirs(self.config["samples_directory"])
-        self.filename = os.path.join(self.config["samples_directory"], filename)
+        abs_filename = os.path.join(self.config["samples_directory"], filename)
 
         # Open new file
-        logging.info("Starting new file: " + str(self.filename))
-        self.file = open(self.filename, "wb")
+        logging.info("Starting new file: " + str(abs_filename))
 
         # Send filename to WebHandler class
         with self.web_handler.lock:
             self.web_handler.active_filename.value = filename.encode("utf-8")
 
+        # Open file for writing and return it
+        return open(abs_filename, "wb")
+
     def processor_loop(self):
         # Set loop flag
-        self.processor_loop_running = True
+        self.processor_loop_running.Value = True
 
-        # Get samplig rate from config
+        # Initialize logging in current process
+        from main import logging_setup
+        logging_setup()
+
+        # File IO
+        file = None
+
+        # Get sampling rate from config
         sampling_rate = int(self.config["sampling_rate"])
 
         # Set chunk size = samplerate to make 1s chunks
@@ -196,6 +204,7 @@ class DataProcessor:
         high_intensity_chunks_counter = 0
 
         # Calibration variables
+        calibration_state = CALIBRATION_STATE_NO
         pga_calibration_buffer = np.zeros((3, int(self.config["calibration_chunks"])), dtype=np.float32)
         pga_calibrations = np.zeros(3, dtype=np.float32)
         pga_calibration_buffer_position = 0
@@ -214,7 +223,7 @@ class DataProcessor:
         # Variable to store when alarm was enabled
         alarm_enabled_time = 0
 
-        while self.processor_loop_running:
+        while self.processor_loop_running.Value:
             try:
                 # Get new data
                 accelerations = self.serial_handler.accelerations_queue.get(block=True)
@@ -313,7 +322,7 @@ class DataProcessor:
                         pgas[i] = rms * 2. * math.sqrt(2)
 
                         # Check calibration
-                        if self.calibration_state == CALIBRATION_STATE_OK:
+                        if calibration_state == CALIBRATION_STATE_OK:
                             # Apply calibration
                             pgas[i] -= pga_calibrations[i]
                             if pgas[i] < 0.:
@@ -329,19 +338,19 @@ class DataProcessor:
                             msks[i] = 0
 
                     # First start calibration
-                    if self.calibration_state == CALIBRATION_STATE_NO:
+                    if calibration_state == CALIBRATION_STATE_NO:
                         calibration_delay_counter = int(self.config["calibration_initial_delay"])
-                        self.calibration_state = CALIBRATION_STATE_DELAY
+                        calibration_state = CALIBRATION_STATE_DELAY
                         logging.info("Starting PGA calibration after " + str(calibration_delay_counter) + "s")
 
                     # Requested calibration from physical button or from web page
-                    elif self.calibration_state == CALIBRATION_STATE_OK and button_flag:
+                    elif calibration_state == CALIBRATION_STATE_OK and button_flag:
                         calibration_delay_counter = int(self.config["calibration_button_delay"])
-                        self.calibration_state = CALIBRATION_STATE_DELAY
+                        calibration_state = CALIBRATION_STATE_DELAY
                         logging.info("Starting PGA calibration after " + str(calibration_delay_counter) + "s")
 
                     # Waiting delay
-                    if self.calibration_state == CALIBRATION_STATE_DELAY:
+                    if calibration_state == CALIBRATION_STATE_DELAY:
                         # Subtract calibration delay counter
                         if calibration_delay_counter >= 0:
                             calibration_delay_counter -= 1
@@ -349,12 +358,12 @@ class DataProcessor:
                         # Delay done
                         else:
                             # Start calibration
-                            self.calibration_state = CALIBRATION_STATE_IN_PROCESS
+                            calibration_state = CALIBRATION_STATE_IN_PROCESS
                             pga_calibration_buffer_position = 0
                             logging.info("Started PGA calibration for "
                                          + str(len(pga_calibration_buffer[0])) + "s")
 
-                    if self.calibration_state == CALIBRATION_STATE_IN_PROCESS:
+                    if calibration_state == CALIBRATION_STATE_IN_PROCESS:
                         # Calibration in process
                         if pga_calibration_buffer_position < len(pga_calibration_buffer[0]):
                             for i in range(3):
@@ -363,16 +372,16 @@ class DataProcessor:
 
                         # Calibration done
                         else:
-                            self.calibration_state = CALIBRATION_STATE_OK
+                            calibration_state = CALIBRATION_STATE_OK
                             for i in range(3):
                                 pga_calibrations[i] = np.average(pga_calibration_buffer[i])
                             logging.info("PGA calibration done! XYZ values: " + str(pga_calibrations))
 
                     # Set calibration led state
-                    if self.calibration_state == CALIBRATION_STATE_NO \
-                            or self.calibration_state == CALIBRATION_STATE_DELAY:
+                    if calibration_state == CALIBRATION_STATE_NO \
+                            or calibration_state == CALIBRATION_STATE_DELAY:
                         self.serial_handler.calibration_state.value = 0
-                    elif self.calibration_state == CALIBRATION_STATE_IN_PROCESS:
+                    elif calibration_state == CALIBRATION_STATE_IN_PROCESS:
                         self.serial_handler.calibration_state.value = 1
                     else:
                         self.serial_handler.calibration_state.value = 2
@@ -382,7 +391,7 @@ class DataProcessor:
                     msk_current = np.max(msks)
 
                     # Starting / stopping alarm
-                    if self.calibration_state == CALIBRATION_STATE_OK:
+                    if calibration_state == CALIBRATION_STATE_OK:
                         # Count intensities
                         if jma_current >= self.web_handler.alarm_enable_high_jma.value:
                             high_intensity_chunks_counter += 1
@@ -435,7 +444,7 @@ class DataProcessor:
                     if self.serial_handler.alarm_state.value != ALARM_STATE_OFF:
                         if button_flag \
                                 or time.time() - alarm_enabled_time > self.web_handler.alarm_active_time_s.value \
-                                or self.calibration_state != CALIBRATION_STATE_OK:
+                                or calibration_state != CALIBRATION_STATE_OK:
                             logging.info("Stopping alarm!")
                             self.serial_handler.alarm_state.value = ALARM_STATE_OFF
                             self.web_handler.trigger_alarm.value = ALARM_STATE_OFF
@@ -447,30 +456,35 @@ class DataProcessor:
                     chunk = chunk.transpose()
 
                     # Start new file
-                    if self.file is None:
-                        self.start_file()
+                    if file is None:
+                        file = self.start_file()
                         file_size_bytes = 0
 
                     # Write data to file
-                    self.file.write(chunk.tobytes(order="C"))
-                    self.file.flush()
+                    file.write(chunk.tobytes(order="C"))
+                    file.flush()
 
                     # Add new bytes size (chunk size * 3 channels * 4 bytes per sample)
                     file_size_bytes += chunk_size * 3 * 4
 
                     # Stop file if target size reached or button was pressed or request_file_close has been set
-                    if self.file is not None \
+                    if file is not None \
                             and (file_size_bytes + (chunk_size * 3 * 4) >= int(self.config["limit_size_to_bytes"])
                                  or button_flag
                                  or self.web_handler.request_file_close.value):
                         logging.info("Closing file")
                         try:
-                            self.file.flush()
-                            self.file.close()
+                            file.flush()
+                            file.close()
                         except Exception as e:
                             logging.error("Error closing file!", exc_info=e)
-                        self.file = None
+                        file = None
                         self.web_handler.request_file_close.value = False
+
+            # Exit requested
+            except KeyboardInterrupt:
+                logging.warning("KeyboardInterrupt @ processor_loop()")
+                break
 
             # Oh no, error!
             except Exception as e:

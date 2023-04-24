@@ -14,12 +14,12 @@
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  OTHER DEALINGS IN THE SOFTWARE.
 """
-
 import json
 import logging
 import multiprocessing
 import os
 import sys
+import time
 
 import DataProcessor
 import SerialHandler
@@ -114,13 +114,13 @@ def main() -> None:
     logging.info("https://github.com/F33RNI/SeismoHome")
 
     # Read and parse settings from config file
-    config = load_json(CONFIG_FILE)
+    config_dict = load_json(CONFIG_FILE)
 
-    # Start serial handler as process
+    # Make them multiprocessing
+    config = multiprocessing.Manager().dict(config_dict)
+
+    # Initialize SerialHandler class
     serial_handler = SerialHandler.SerialHandler(config)
-    serial_handler_process = multiprocessing.Process(target=serial_handler.start)
-    serial_handler_process.start()
-    logging.info("SerialHandled PID: " + str(serial_handler_process.pid))
 
     # Start web handler as process
     web_handler = WebHandler.WebHandler(config)
@@ -128,9 +128,34 @@ def main() -> None:
     web_handler_process.start()
     logging.info("WebHandler PID: " + str(web_handler_process.pid))
 
-    # Start data processor in the main thread
+    # Start data processor as process
     data_processor = DataProcessor.DataProcessor(config, serial_handler, web_handler)
-    data_processor.processor_loop()
+    data_processor_process = multiprocessing.Process(target=data_processor.processor_loop)
+    data_processor_process.start()
+    logging.info("DataProcessor PID: " + str(web_handler_process.pid))
+
+    # Start serial handler in the main thread and stay in sender_loop()
+    serial_handler.start()
+
+    # If we are here, then sender_loop() is exited (interrupt?)
+    # Stop reader_loop()
+    serial_handler.stop_all()
+
+    # Stop web handler
+    logging.warning("Stopping web server")
+    web_handler_process.terminate()
+    while web_handler_process.is_alive():
+        time.sleep(0.1)
+
+    # Stop data processor
+    logging.warning("Stopping data processor")
+    data_processor.processor_loop_running.Value = False
+    data_processor_process.terminate()
+    while data_processor_process.is_alive():
+        time.sleep(0.1)
+
+    # Exited (I hope)
+    logging.warning("I was killed. Bye bye =(")
 
 
 if __name__ == "__main__":

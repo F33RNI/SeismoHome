@@ -38,19 +38,6 @@ class WebHandler:
     def __init__(self, config: dict):
         self.config = config
 
-        self.app = None
-
-        # Flag to preventing double click on button
-        self.is_file_processing = False
-
-        # List of files (as list of dictionaries)
-        self.files_list = []
-
-        # Filename and path for downloading file
-        self.filename = ""
-        self.filepath = ""
-        self.delete_after_download = False
-
         # Multiprocessing queue for JSON data (limit to 1 second)
         self.json_packets_queue = multiprocessing.Queue(maxsize=int(self.config["sampling_rate"]))
 
@@ -495,6 +482,17 @@ class WebHandler:
         self.alarm_enable_low_jma.value = alarm_config["alarm_enable_low_jma"]
         self.alarm_enable_high_jma.value = alarm_config["alarm_enable_high_jma"]
         self.alarm_active_time_s.value = alarm_config["alarm_active_time_s"]
+
+        # Flag to preventing double click on button
+        self.is_file_processing = False
+
+        # List of files (as list of dictionaries)
+        self.files_list = []
+
+        # Filename and path for downloading file
+        self.filename = ""
+        self.filepath = ""
+        self.delete_after_download = False
 
         # Initialize Flask app
         self.app = Flask(__name__)
