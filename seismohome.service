@@ -1,0 +1,13 @@
+[Unit]
+Description=SeismoHome service
+After=multi-user.target
+
+[Service]
+Type=simple
+Restart=always
+WorkingDirectory=YOUR DIRECTORY HERE/SeismoHome
+ExecStart=YOUR DIRECTORY HERE/SeismoHome/run.sh
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

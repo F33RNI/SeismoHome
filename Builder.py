@@ -47,7 +47,9 @@ COPY_FILES = ["icon.png",
               "templates",
               "static",
               "config.json",
-              "alarm_config.json"]
+              "alarm_config.json",
+              "seismohome.service",
+              "run.sh"]
 
 # Files and folders to delete from final build directory after build
 DELETE_FILES = []
