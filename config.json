@@ -37,8 +37,8 @@
     "__comment11__": "DIRECTORY WHERE TO SAVE RECORDED RAW DATA",
     "samples_directory": "data",
 
-    "__comment12__": "LIMIT FILE SIZES TO 50MB (52428800 / (12bytes * 40sps * 3600s) = ~30.3 hours @ 40sps)",
-    "limit_size_to_bytes": 52428800,
+    "__comment12__": "LIMIT FILE SIZES TO ~19.8MB (20736000 / (12bytes * 40sps * 3600s) = 12 hours @ 40sps)",
+    "limit_size_to_bytes": 20736000,
 
     "__comment13__": "DEFAULT IP FOR FLASK SERVER. USE 0.0.0.0 TO RUN ON LOCALHOST AND NETWORK AT THE SAME TIME",
     "flask_server_host": "0.0.0.0",
