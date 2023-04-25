@@ -9,9 +9,11 @@
    </p>
 </div>
 
-<div style="content: ''; clear: both; display: table;">
-   <img src="device_photo_1.jpg" alt="Seismograph photo 1" style="width:50%; padding: 0.5em;">
-   <img src="device_photo_2.jpg" alt="Seismograph photo 2" style="width:50%; padding: 0.5em;">
+<div style="width:100%;text-align:center;">
+    <p align="center">
+        <img src="device_photo_1.jpg" alt="Seismograph photo 1" width="auto" height="300">
+        <img src="device_photo_2.jpg" alt="Seismograph photo 2" width="auto" height="300">
+    </p>
 </div>
 
 <div style="content: ''; clear: both; display: table;">
