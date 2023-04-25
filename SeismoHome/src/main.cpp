@@ -77,6 +77,9 @@ inline constexpr unsigned char operator "" _uint8(unsigned long long arg) noexce
 #define ON_BATTERY_LED_ON     100U
 #define ON_BATTERY_LED_OFF    900U
 
+// Filter (0-1) for battery voltage the higher the slower
+#define VOLTAGE_FILTER_K      0.9995f
+
 /**
  * COMMUNICATION SETTINGS
 */
@@ -172,12 +175,12 @@ uint16_t alarm_cycles_counter;
 boolean alarm_low_state;
 
 // Voltage measurement variables
-float battery_voltage, vbat_pin_voltage;
+float battery_voltage, battery_voltage_filtered, vbat_pin_voltage;
 uint16_t battery_voltage_mv_int;
 boolean battery_low_flag;
 
 // Charging variables
-uint8_t power_state;
+volatile uint8_t power_state = POWER_STATE_ON_BAT;
 boolean power_state_led_state;
 uint64_t power_state_led_timer;
 boolean charger_connected;
@@ -565,12 +568,11 @@ void charging_manager(void) {
       power_state = POWER_STATE_CHARGING;
     }
 
-    // Voltage is between thresholds -> stop charging
-    else {
+    // We are between thresholds and previous state was on battery, so change it to connected, not charging
+    else if (power_state == POWER_STATE_ON_BAT) {
       set_charging(false);
       power_state = POWER_STATE_IDLE;
     }
-
   }
 
   // Blink with LED indicating that we are on battery
@@ -617,8 +619,14 @@ void vbat_measure(void) {
   else if (battery_voltage > (float) UINT16_MAX)
     battery_voltage = (float) UINT16_MAX;
 
+  // Filter it
+  if (battery_voltage_filtered == 0)
+    battery_voltage_filtered = battery_voltage;
+  else
+    battery_voltage_filtered = battery_voltage_filtered * VOLTAGE_FILTER_K + battery_voltage * (1.f - VOLTAGE_FILTER_K);
+
   // Convert to uint16_t
-  battery_voltage_mv_int = (uint16_t) battery_voltage;
+  battery_voltage_mv_int = (uint16_t) battery_voltage_filtered;
 }
 
 /**
