@@ -536,11 +536,11 @@ void charging_manager(void) {
   vbat_measure();
 
   // Set low battery flag and alarm LED state
-  if (battery_voltage < VBAT_LOW_VOLTAGE_L_MV) {
+  if (battery_voltage_filtered < VBAT_LOW_VOLTAGE_L_MV) {
     battery_low_flag = true;
     led_low_bat(true);
   }
-  else if (battery_voltage > VBAT_LOW_VOLTAGE_U_MV) {
+  else if (battery_voltage_filtered > VBAT_LOW_VOLTAGE_U_MV) {
     battery_low_flag = false;
     led_low_bat(false);
   }
@@ -557,13 +557,13 @@ void charging_manager(void) {
   // Charger is connected
   else {
     // Stop charging?
-    if (battery_voltage > VBAT_STOP_CHARGE_MV) {
+    if (battery_voltage_filtered > VBAT_STOP_CHARGE_MV) {
       set_charging(false);
       power_state = POWER_STATE_IDLE;
     }
     
     // Start charging ?
-    else if (battery_voltage < VBAT_START_CHARGE_MV) {
+    else if (battery_voltage_filtered < VBAT_START_CHARGE_MV) {
       set_charging(true);
       power_state = POWER_STATE_CHARGING;
     }
