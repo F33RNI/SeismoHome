@@ -1,5 +1,5 @@
 {
-    "alarm_enable_low_jma": 1.6,
-    "alarm_enable_high_jma": 2.5,
+    "alarm_enable_low_jma": 1.5,
+    "alarm_enable_high_jma": 2,
     "alarm_active_time_s": 30
 }

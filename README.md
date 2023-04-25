@@ -58,6 +58,6 @@ The IMU is connected to an Atmega328P (Arduino) which handles receiving data fro
 4. Download release (or clone repo, install all requirements from requirements.txt)
 5. For linux, copy `seismohome.service` to `/etc/systemd/system/` and edit `WorkingDirectory` and `ExecStart`. Reload systemd daemon (`sudo systemctl daemon-reload`), enable service on boot (`sudo systemctl enable seismohome`) and start it (`sudo systemctl start seismohome`).
 6. Make sure all working correctly (ADC LED should blink) and open web page
-7. Set thresholds to high values, wait for an hour or more and write down maximum intensity (This will be the intensity of the noise). Next, set this intensity as the threshold for low alarm mode, and for high add 1 (For example 1.5 and 2 JMA)
+7. Set thresholds to high values, wait for an hour or more and write down maximum intensity (This will be the intensity of the noise). Next, set this intensity as the threshold for low alarm mode, and for high add 0.5 (For example 1.5 and 2 JMA)
 
 If you want more detailed instructions, please open an issue. If I understand that someone has an interest in the project, I will make more detailed instructions and even a schematic.
