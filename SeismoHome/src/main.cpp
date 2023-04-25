@@ -53,7 +53,7 @@ inline constexpr unsigned char operator "" _uint8(unsigned long long arg) noexce
  * BATTERY VOLTAGE SETTINGS
 */
 // Stop charging battery if voltage is above this threshold
-#define VBAT_STOP_CHARGE_MV   3900.f
+#define VBAT_STOP_CHARGE_MV   4000.f
 
 // Start charging battery if voltage is below this threshold
 #define VBAT_START_CHARGE_MV  3800.f
