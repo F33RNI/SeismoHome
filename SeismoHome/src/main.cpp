@@ -812,12 +812,12 @@ void led_alarm(boolean state) {
 */
 void set_charging(boolean state) {
   if (state) {
-    pinMode(PIN_CHARGING_STOP, OUTPUT);
-    digitalWrite(PIN_CHARGING_STOP, HIGH);
-  }
-  else {
     digitalWrite(PIN_CHARGING_STOP, LOW);
     pinMode(PIN_CHARGING_STOP, INPUT);
+  }
+  else {
+    pinMode(PIN_CHARGING_STOP, OUTPUT);
+    digitalWrite(PIN_CHARGING_STOP, HIGH);
   }
 }
 
