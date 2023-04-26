@@ -1,6 +1,6 @@
 {
     "__comment01__": "SERIAL PORT OF SEISMOGRAPH AND BAUD RATE (Linux ports are smth like /dev/ttyS0 and windows COM1)",
-    "serial_port": "/dev/ttyS1",
+    "serial_port": "COM4",
     "serial_baud_rate": 57600,
 
     "__comment02__": "INTERVAL (IN SECONDS) FOR SENDING PACKETS TO THE SEISMOGRAPH",
@@ -37,12 +37,16 @@
     "__comment11__": "DIRECTORY WHERE TO SAVE RECORDED RAW DATA",
     "samples_directory": "data",
 
-    "__comment12__": "LIMIT FILE SIZES TO ~19.8MB (20736000 / (12bytes * 40sps * 3600s) = 12 hours @ 40sps)",
-    "limit_size_to_bytes": 20736000,
+    "__comment12__": "RECORDING TO FILE BEGINS WHEN THE ALARM ACTIVATES IN THE LOW MODE. THIS SETTING INDICATES",
+    "__comment13__": "HOW MANY CHUNKS (SECONDS) WILL BE WRITTEN TO THE FILE BEFORE THE ALARM START",
+    "pre_recording_buffer_chunks": 10,
 
-    "__comment13__": "DEFAULT IP FOR FLASK SERVER. USE 0.0.0.0 TO RUN ON LOCALHOST AND NETWORK AT THE SAME TIME",
+    "__comment14__": "EVERY CHUNK (SECOND), THE PEAK (MAX) WILL MULTIPLY BY THIS COEFFICIENT TO GRADUALLY BECOME 0",
+    "peak_intensity_attenuation_factor": 0.998,
+
+    "__comment15__": "DEFAULT IP FOR FLASK SERVER. USE 0.0.0.0 TO RUN ON LOCALHOST AND NETWORK AT THE SAME TIME",
     "flask_server_host": "0.0.0.0",
 
-    "__comment14__": "DEFAULT PORT FLASK SERVER. USE 5000 IF YOU ARE NOT ROOT",
+    "__comment16__": "DEFAULT PORT FLASK SERVER. USE 5000 IF YOU ARE NOT ROOT",
     "flask_server_port": 80
 }

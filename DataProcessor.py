@@ -32,7 +32,7 @@ import LoggingHandler
 from SerialHandler import SerialHandler
 from WebHandler import WebHandler
 
-FILTERS_ORDER = 2
+FILTERS_ORDER = 1
 
 CALIBRATION_STATE_NO = 0
 CALIBRATION_STATE_DELAY = 1
@@ -127,12 +127,32 @@ def jma_to_msk(jma: float) -> float:
     return jma * 1.5 + 1.5
 
 
+def np_shift(arr: np.ndarray, num: int, fill_value=np.nan):
+    """
+    Shifts numpy array to the right or left
+    :param arr: array to shift
+    :param num: if > 0 will shift to the left, if < 0 to the right
+    :param fill_value: fill new regions with that value
+    :return: shifted array
+    """
+    result = np.empty_like(arr)
+    if num > 0:
+        result[:num] = fill_value
+        result[num:] = arr[:-num]
+    elif num < 0:
+        result[num:] = fill_value
+        result[:num] = arr[-num:]
+    else:
+        result[:] = arr
+    return result
+
+
 class DataProcessor:
     def __init__(self, config: dict, serial_handler: SerialHandler, web_handler: WebHandler) -> None:
         self.config = config
         self.serial_handler = serial_handler
         self.web_handler = web_handler
-        
+
         self.processor_loop_running = multiprocessing.Value(ctypes.c_bool, False)
 
     def start_file(self) -> IO:
@@ -140,8 +160,10 @@ class DataProcessor:
         Generates new file and opens it for writing in wb mode
         :return:
         """
-        # Generate timestamp for filename
-        timestamp = datetime.datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+        # Generate timestamp for filename. Time now - pre-recoding buffer length
+        timestamp = (datetime.datetime.now()
+                     - datetime.timedelta(seconds=int(self.config["pre_recording_buffer_chunks"])))\
+            .strftime("%Y_%m_%d__%H_%M_%S")
 
         # Generate format description for filename
         file_format = str(self.config["sampling_rate"]) + "sps__3ch__float32__l_endian"
@@ -195,16 +217,20 @@ class DataProcessor:
         chunk = np.zeros((chunk_size, 3), dtype=np.float32)
         chunk_cursor = 0
 
+        # Buffer for pre-recording data
+        pre_recording_buffer = np.zeros((chunk_size * int(self.config["pre_recording_buffer_chunks"]), 3),
+                                        dtype=np.float32)
+
         # Calculated magnitudes
         pgas = np.zeros(3, dtype=np.float32)
         jmas = np.zeros(3, dtype=np.float32)
         msks = np.zeros(3, dtype=np.float32)
         jma_current = 0.
         msk_current = 0.
+        jma_peak = 0.
+        msk_peak = 0.
         low_intensity_chunks_counter = 0
         high_intensity_chunks_counter = 0
-        jma_file_max = 0.
-        msk_file_max = 0.
 
         # Calibration variables
         calibration_state = CALIBRATION_STATE_NO
@@ -219,9 +245,6 @@ class DataProcessor:
 
         # Linear gradient of two FFTs (for webpage)
         ffts_linspace = np.zeros((3, chunk_size // 2 + 1, chunk_size + 1), dtype=np.float32)
-
-        # Counter for file size
-        file_size_bytes = 0
 
         # Variable to store when alarm was enabled
         alarm_enabled_time = 0
@@ -269,8 +292,8 @@ class DataProcessor:
                         "timestamp": round(time.time() * 1000),
                         "intensity_jma": float(jma_current),
                         "intensity_msk": float(msk_current),
-                        "intensity_jma_max": float(jma_file_max),
-                        "intensity_msk_max": float(msk_file_max),
+                        "intensity_jma_peak": float(jma_peak),
+                        "intensity_msk_peak": float(msk_peak),
                         "battery_voltage_mv": self.serial_handler.battery_voltage_mv.value,
                         "battery_state": battery_state_str,
                         "temperature": self.serial_handler.temperature.value,
@@ -291,6 +314,12 @@ class DataProcessor:
 
                 # Buffer is full
                 if chunk_cursor >= len(chunk):
+                    # Shift pre-recording buffer to make room for new chunk of data
+                    pre_recording_buffer = np_shift(pre_recording_buffer, -len(chunk), 0.)
+
+                    # Write new chunk to pre-recording buffer
+                    pre_recording_buffer[-len(chunk):] = chunk
+
                     # Read button state (hardware or virtual)
                     button_flag = self.serial_handler.button_flag.value or self.web_handler.button_flag.value
 
@@ -395,11 +424,24 @@ class DataProcessor:
                     jma_current = np.max(jmas)
                     msk_current = np.max(msks)
 
-                    # Calculate maximum intensity in current file
-                    if jma_current > jma_file_max:
-                        jma_file_max = jma_current
-                    if msk_current > msk_file_max:
-                        msk_file_max = msk_current
+                    # Calculate maximum (peak) intensities in long period of time
+                    if jma_current > jma_peak:
+                        jma_peak = jma_current
+                    if msk_current > msk_peak:
+                        msk_peak = msk_current
+
+                    # Slowly bring peak intensities to 0 if calibrated
+                    if calibration_state == CALIBRATION_STATE_OK:
+                        jma_peak *= float(self.config["peak_intensity_attenuation_factor"])
+                        msk_peak *= float(self.config["peak_intensity_attenuation_factor"])
+
+                    # Set them to 0 if not calibrated
+                    else:
+                        jma_peak = 0.
+                        msk_peak = 0.
+
+                    # Recording request
+                    start_file_flag = False
 
                     # Starting / stopping alarm
                     if calibration_state == CALIBRATION_STATE_OK:
@@ -428,6 +470,9 @@ class DataProcessor:
                             # Disable test trigger is we have real data
                             self.web_handler.trigger_alarm.value = ALARM_STATE_OFF
 
+                            # Start recording data
+                            start_file_flag = True
+
                             # Store alarm start time
                             alarm_enabled_time = time.time()
 
@@ -439,6 +484,9 @@ class DataProcessor:
 
                             # Disable test trigger is we have real data
                             self.web_handler.trigger_alarm.value = ALARM_STATE_OFF
+
+                            # Start recording data
+                            start_file_flag = True
 
                             # Store alarm start time
                             alarm_enabled_time = time.time()
@@ -467,34 +515,36 @@ class DataProcessor:
                     chunk = chunk.transpose()
 
                     # Start new file
-                    if file is None:
+                    if file is None and start_file_flag:
+                        logging.info("Starting recording data")
+
+                        # Create new file
                         file = self.start_file()
-                        file_size_bytes = 0
-                        jma_file_max = 0.
-                        msk_file_max = 0.
 
-                    # Write data to file
-                    file.write(chunk.tobytes(order="C"))
-                    file.flush()
+                        # Write pre-recording buffer without current chunk because it will be written later
+                        file.write(pre_recording_buffer[:-len(chunk)].tobytes(order="C"))
+                        file.flush()
 
-                    # Add new bytes size (chunk size * 3 channels * 4 bytes per sample)
-                    file_size_bytes += chunk_size * 3 * 4
+                    # Recording is active?
+                    if file is not None:
+                        # Write data to file
+                        file.write(chunk.tobytes(order="C"))
+                        file.flush()
 
-                    # Stop file if target size reached or button was pressed or request_file_close has been set
-                    if file is not None \
-                            and (file_size_bytes + (chunk_size * 3 * 4) >= int(self.config["limit_size_to_bytes"])
-                                 or button_flag
-                                 or self.web_handler.request_file_close.value):
-                        logging.info("Closing file")
-                        try:
-                            file.flush()
-                            file.close()
-                        except Exception as e:
-                            logging.error("Error closing file!", exc_info=e)
-                        file = None
-                        self.web_handler.request_file_close.value = False
-                        jma_file_max = 0.
-                        msk_file_max = 0.
+                        # Stop file if alarm is off or button was pressed or request_file_close has been set
+                        if self.serial_handler.alarm_state.value == ALARM_STATE_OFF \
+                                or button_flag \
+                                or self.web_handler.request_file_close.value:
+                            logging.info("Stopping recording and closing file")
+                            try:
+                                file.flush()
+                                file.close()
+                            except Exception as e:
+                                logging.error("Error closing file!", exc_info=e)
+                            file = None
+                            self.web_handler.request_file_close.value = False
+                            with self.web_handler.lock:
+                                self.web_handler.active_filename.value = "".encode("utf-8")
 
             # Exit requested
             except KeyboardInterrupt:

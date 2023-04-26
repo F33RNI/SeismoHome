@@ -264,25 +264,15 @@ function listFiles() {
 			rawFiles = JSON.parse(xhr.responseText);
 
 			// Remove options from selector
-			clearSelector()
+			clearSelector();
 
 			// Add new files
 			const filesSelector = document.getElementById("files-selector");
 			for (let i = 0; i < rawFiles.length; i++) {
 				const option = document.createElement("option");
 
-				// Calculate file length
-				const hoursTotal = Number(rawFiles[i].file_length) / 3600;
-				const minutesTotal = Number(rawFiles[i].file_length) / 60;
-				const secondsTotal = Number(rawFiles[i].file_length);
-				let timeLength = "";
-				if (hoursTotal >= 1.)
-					timeLength = hoursTotal.toFixed(0) + " hours";
-				else if (minutesTotal >= 1.)
-					timeLength = minutesTotal.toFixed(0) + " minutes";
-				else
-					timeLength = secondsTotal + " seconds";
-
+				// Get file length in seconds
+				const timeLength = Number(rawFiles[i].file_length) + "s";
 				option.text = rawFiles[i].timestamp_start + " - " + rawFiles[i].timestamp_end + " (" + timeLength + ")";
 				option.value = rawFiles[i].filename;
 				option.className = "file-selector-option";
@@ -298,9 +288,17 @@ function listFiles() {
  * @param {String} action raw / wav / csv / delete
  */
 function processFile(action) {
-	// Get selected filename and index
-	const filename = document.getElementById("files-selector").value;
+	// Get selected index
 	const selectedIndex = Number(document.getElementById("files-selector").selectedIndex);
+
+	// Check index
+	if (selectedIndex < 0) {
+		alert("No file selected!");
+		return;
+	}
+
+	// Get selected filename
+	const filename = document.getElementById("files-selector").value;
 
 	switch (action) {
 		case "raw":
@@ -511,8 +509,8 @@ if (!!window.EventSource) {
 		// Update text data on page
 		document.getElementById("intensity-jma").innerText = jsonData.intensity_jma.toFixed(1);
 		document.getElementById("intensity-msk").innerText = jsonData.intensity_msk.toFixed(1);
-		document.getElementById("intensity-jma-max").innerText = jsonData.intensity_jma_max.toFixed(1);
-		document.getElementById("intensity-msk-max").innerText = jsonData.intensity_msk_max.toFixed(1);
+		document.getElementById("intensity-jma-peak").innerText = jsonData.intensity_jma_peak.toFixed(1);
+		document.getElementById("intensity-msk-peak").innerText = jsonData.intensity_msk_peak.toFixed(1);
 		document.getElementById("alarm-state").innerText = jsonData.alarm_state;
 		document.getElementById("battery-voltage").innerText =
 			(jsonData.battery_voltage_mv / 1000.).toFixed(2);

@@ -265,6 +265,12 @@ class WebHandler:
                     # Set lock
                     self.is_file_processing = True
 
+                    # Check index
+                    if int(request.json["index"]) < 0 or int(request.json["index"]) >= len(self.files_list):
+                        logging.error("Wrong file index: " + str(int(request.json["index"])))
+                        self.is_file_processing = False
+                        return Response(status=440)
+
                     # Extract requested file and action
                     file = self.files_list[int(request.json["index"])]
                     action = str(request.json["action"])
