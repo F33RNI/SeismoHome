@@ -43,6 +43,8 @@ The IMU is connected to an Atmega328P (Arduino) which handles receiving data fro
 - **pyserial**: https://github.com/pyserial/pyserial
 - **TimerOne**: https://github.com/PaulStoffregen/TimerOne
 - **imerTwo**: https://github.com/theAndreas/TimerTwo
+- **uPlot**: https://github.com/leeoniya/uPlot
+- **js-colormaps**: https://github.com/timothygebhard/js-colormaps
 
 ----------
 
