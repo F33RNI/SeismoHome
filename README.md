@@ -1,5 +1,5 @@
 # SeismoHome
-## Simple MPU-6050 based earthquake detector with alarm, uninterruptible power supply, data logging and web interface
+## MPU-6050 based earthquake detector with alarm, uninterruptible power supply, data logging and web interface
 
 <div style="width:100%;text-align:center;">
    <p>
