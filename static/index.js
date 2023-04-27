@@ -658,10 +658,10 @@ if (!!window.EventSource) {
 				document.getElementById("button-hardware").innerText = "Cancel alarm";
 				document.getElementById("button-hardware").disabled = false;
 			} else if (jsonData.calibration_state === CALIBRATION_STATE_OK) {
-				document.getElementById("button-hardware").innerText = "Close file & calibrate";
+				document.getElementById("button-hardware").innerText = "Calibrate";
 				document.getElementById("button-hardware").disabled = false;
 			} else {
-				document.getElementById("button-hardware").innerText = "Close file & calibrate";
+				document.getElementById("button-hardware").innerText = "Calibrate";
 				document.getElementById("button-hardware").disabled = true;
 			}
 		}
