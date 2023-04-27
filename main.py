@@ -27,7 +27,7 @@ import SerialHandler
 import WebHandler
 
 # Version of SeismoHome
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 # Files with settings
 CONFIG_FILE = "config.json"

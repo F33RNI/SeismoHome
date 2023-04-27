@@ -2,6 +2,11 @@
     font-family: Arial, Helvetica, sans-serif;
 }
 
+body {
+    background-color: #221e2a;
+    color: white;
+}
+
 h2 {
     padding: 0 0.5em;
 }
@@ -14,6 +19,12 @@ canvas {
     padding-top: 0.2em;
     width: 100%;
     height: 5em;
+    image-rendering: optimizeSpeed;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: -o-crisp-edges;
+    image-rendering: pixelated;
+    -ms-interpolation-mode: nearest-neighbor;
 }
 
 .main-container {
@@ -129,6 +140,11 @@ button:active {
     transition: opacity .2s;
 }
 
+.slider:disabled {
+    background: #adccc4;
+}
+
+
 .slider:hover {
     opacity: 1;
 }
@@ -147,6 +163,14 @@ button:active {
     height: 1em;
     background: #8011f6;
     cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb:disabled {
+    background: #ae90ce;
+}
+
+.slider::-moz-range-thumb:disabled {
+    background: #ae90ce;
 }
 
 .slider-label {

@@ -67,6 +67,12 @@ window.onload = onLoad;
 // Calibration states
 const CALIBRATION_STATE_OK = 3;
 
+// Timestamp of previous packet
+let timestampLast = 0;
+
+// Previous stream mode (-1 - real-time data stream, >=0 - file index)
+let streamModeLast = 0;
+
 /**
  * Data container for accelerations plot uPlot
  * @type {{series: [{},{label: string, stroke: string},{label: string, stroke: string},{label: string, stroke: string}], scales: {y: {range: (function(*, *, *): [number,number]|[number,number])}}, axes: [{space: number}], pxAlign: boolean}}
@@ -80,21 +86,39 @@ const accelerationsPlotOptions = {
 				uPlot.rangeNum(dataMin, dataMax, 0.1, true)
 		}
 	},
-	axes: [{
-		space: 300,
-	}],
+	axes: [
+		{
+			space: 300,
+			stroke: () => "white",
+			ticks: {
+				stroke: () => "rgba(255, 255, 255, 0.07)",
+			},
+			grid: {
+				stroke: () => "rgba(255, 255, 255, 0.07)",
+			}
+		},
+		{
+			stroke: () => "white",
+			ticks: {
+				stroke: () => "rgba(255, 255, 255, 0.07)",
+			},
+			grid: {
+				stroke: () => "rgba(255, 255, 255, 0.07)",
+			}
+		},
+	],
 	series: [{},
 		{
 			label: "Acceleration X (m/s^2)",
-			stroke: "red",
+			stroke: "salmon",
 		},
 		{
 			label: "Acceleration Y (m/s^2)",
-			stroke: "green",
+			stroke: "lightgreen",
 		},
 		{
 			label: "Acceleration Z (m/s^2)",
-			stroke: "blue",
+			stroke: "aqua",
 		}
 	],
 };
@@ -292,7 +316,7 @@ function processFile(action) {
 	const selectedIndex = Number(document.getElementById("files-selector").selectedIndex);
 
 	// Check index
-	if (selectedIndex < 0) {
+	if (selectedIndex <= 0) {
 		alert("No file selected!");
 		return;
 	}
@@ -319,7 +343,7 @@ function processFile(action) {
 		const url = "/files";
 		xhr.open("POST", url, true);
 		xhr.setRequestHeader("Content-Type", "application/json");
-		const data = JSON.stringify({"index": selectedIndex, "action": action});
+		const data = JSON.stringify({"filename": filename, "action": action});
 		xhr.onreadystatechange = function () {
 			if (xhr.readyState === 4) {
 				if (xhr.status === 200) {
@@ -355,6 +379,13 @@ function clearSelector() {
 	for (i = L; i >= 0; i--) {
 		document.getElementById("files-selector").remove(i);
 	}
+
+	// Add - (stream) option
+	const option = document.createElement("option");
+	option.text = "-";
+	option.value = "-";
+	option.className = "file-selector-option";
+	document.getElementById("files-selector").add(option);
 }
 
 /**
@@ -400,10 +431,12 @@ function onLoad() {
 	// Show slider value
 	document.getElementById("data-size-label").innerText = dataSizeSlider.value;
 
-	// Connect updater
+	// Connect updater (only in real-time stream mode)
 	dataSizeSlider.oninput = function () {
-		dataSize = this.value;
-		document.getElementById("data-size-label").innerText = this.value;
+		if (streamModeLast < 0) {
+			dataSize = this.value;
+			document.getElementById("data-size-label").innerText = this.value;
+		}
 	}
 
 	// Request alarm settings
@@ -442,6 +475,70 @@ function onLoad() {
 
 	// Refresh available files
 	listFiles();
+
+	// Set initial stream mode to real-time stream
+	selectorChangeStream("-");
+}
+
+/**
+ * Clears arrays and resets plot and FFTs data
+ */
+function resetData() {
+	// Clear graph data
+	for (let i = 0; i < graphData.length; i++) {
+		graphData[i].splice(i, graphData[i].length);
+	}
+
+	// Clear FFT data
+	fftDataX.splice(0, fftDataX.length);
+	fftDataY.splice(0, fftDataY.length);
+	fftDataZ.splice(0, fftDataZ.length);
+
+	// Update plot
+	accelerationsPlot.setData(graphData);
+	accelerationsPlot.redraw();
+
+	// Clear canvases
+	canvasXContext.clearRect(0, 0, canvasX.width, canvasX.height);
+	canvasYContext.clearRect(0, 0, canvasY.width, canvasY.height);
+	canvasZContext.clearRect(0, 0, canvasZ.width, canvasZ.height);
+
+	// Set initial length of canvases
+	canvasX.width = 1;
+	canvasX.height = 1;
+	canvasY.width = 1;
+	canvasY.height = 1;
+	canvasZ.width = 1;
+	canvasZ.height = 1;
+}
+
+/**
+ * Changes type of stream to file or real-time stream
+ * @param {String} filename - null for selector, "-" for stream (on first loading)
+ */
+function selectorChangeStream(filename) {
+	// Get selected filename
+	if (filename == null)
+		filename = document.getElementById("files-selector").value;
+
+	const xhr = new XMLHttpRequest();
+	const url = "/stream_mode";
+	xhr.open("POST", url, true);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.onreadystatechange = function () {
+		if (xhr.readyState === 4) {
+			if (xhr.status === 200) {
+				// Clear data on result
+				resetData();
+			}
+
+			// Error
+			else
+				alert("Error: " + xhr.status);
+		}
+	}
+	const data = JSON.stringify({"filename": filename});
+	xhr.send(data);
 }
 
 if (!!window.EventSource) {
@@ -453,6 +550,17 @@ if (!!window.EventSource) {
 
 		// Parse incoming data as JSON
 		const jsonData = JSON.parse(e.data);
+
+		// Reset data and plots if stream mode changed or there is >= 1s gap between timestamps
+		if (jsonData.stream_mode !== streamModeLast || Math.abs(jsonData.timestamp - timestampLast) > 1000) {
+			resetData();
+
+			// Restore datasize if we are back in stream mode
+			if (jsonData.stream_mode < 0)
+				dataSize = document.getElementById("data-size").value;
+		}
+		streamModeLast = jsonData.stream_mode;
+		timestampLast = jsonData.timestamp;
 
 		// Make copy of dataSize to make sure it didn't change
 		const dataSize_ = dataSize;
@@ -478,11 +586,20 @@ if (!!window.EventSource) {
 		graphData[2].push(jsonData.accelerations[1]);
 		graphData[3].push(jsonData.accelerations[2]);
 
-		// Splice data (Scroll plot)
-		graphData[0].splice(0, graphData[0].length - dataSize_);
-		graphData[1].splice(0, graphData[1].length - dataSize_);
-		graphData[2].splice(0, graphData[2].length - dataSize_);
-		graphData[3].splice(0, graphData[3].length - dataSize_);
+		// Splice data (Scroll plot) in real-time stream mode and enable data size slider
+		if (jsonData.stream_mode < 0) {
+			graphData[0].splice(0, graphData[0].length - dataSize_);
+			graphData[1].splice(0, graphData[1].length - dataSize_);
+			graphData[2].splice(0, graphData[2].length - dataSize_);
+			graphData[3].splice(0, graphData[3].length - dataSize_);
+			document.getElementById("data-size").disabled = false;
+		}
+
+		// Set data size to actual arrays size in file mode and disable data size slider
+		else {
+			dataSize = graphData[0].length;
+			document.getElementById("data-size").disabled = true;
+		}
 
 		// Update plot
 		accelerationsPlot.setData(graphData);
@@ -507,15 +624,25 @@ if (!!window.EventSource) {
 			= jsonData.fft_range_from.toFixed(0);
 
 		// Update text data on page
-		document.getElementById("intensity-jma").innerText = jsonData.intensity_jma.toFixed(1);
-		document.getElementById("intensity-msk").innerText = jsonData.intensity_msk.toFixed(1);
-		document.getElementById("intensity-jma-peak").innerText = jsonData.intensity_jma_peak.toFixed(1);
-		document.getElementById("intensity-msk-peak").innerText = jsonData.intensity_msk_peak.toFixed(1);
-		document.getElementById("alarm-state").innerText = jsonData.alarm_state;
-		document.getElementById("battery-voltage").innerText =
-			(jsonData.battery_voltage_mv / 1000.).toFixed(2);
-		document.getElementById("battery-state").innerText = jsonData.battery_state;
-		document.getElementById("temperature").innerText = jsonData.temperature.toFixed(0);
+		if (jsonData.stream_mode < 0) {
+			document.getElementById("intensity-jma").innerText = jsonData.intensity_jma.toFixed(1);
+			document.getElementById("intensity-msk").innerText = jsonData.intensity_msk.toFixed(1);
+			document.getElementById("intensity-jma-peak").innerText = jsonData.intensity_jma_peak.toFixed(1);
+			document.getElementById("intensity-msk-peak").innerText = jsonData.intensity_msk_peak.toFixed(1);
+			document.getElementById("alarm-state").innerText = jsonData.alarm_state;
+			document.getElementById("battery-voltage").innerText =
+				(jsonData.battery_voltage_mv / 1000.).toFixed(2);
+			document.getElementById("battery-state").innerText = jsonData.battery_state;
+			document.getElementById("temperature").innerText = jsonData.temperature.toFixed(0);
+			document.getElementById("status-real-time").style.display = "block";
+			document.getElementById("status-file").style.display = "none";
+		}
+		else {
+			document.getElementById("intensity-jma-file-peak").innerText = jsonData.intensity_jma_peak.toFixed(1);
+			document.getElementById("intensity-msk-file-peak").innerText = jsonData.intensity_msk_peak.toFixed(1);
+			document.getElementById("status-real-time").style.display = "none";
+			document.getElementById("status-file").style.display = "block";
+		}
 
 		// Set alarm test state (in case we did not get right response from test request)
 		if (jsonData.alarm_state === "Test low")
@@ -526,30 +653,36 @@ if (!!window.EventSource) {
 			alarmTestState = 0;
 
 		// Set virtual button text and make it enabled only if alarm or calibrated
-		if (jsonData.alarm_state !== "Off") {
-			document.getElementById("button-hardware").innerText = "Cancel alarm";
-			document.getElementById("button-hardware").disabled = false;
+		if (jsonData.stream_mode < 0) {
+			if (jsonData.alarm_state !== "Off") {
+				document.getElementById("button-hardware").innerText = "Cancel alarm";
+				document.getElementById("button-hardware").disabled = false;
+			} else if (jsonData.calibration_state === CALIBRATION_STATE_OK) {
+				document.getElementById("button-hardware").innerText = "Close file & calibrate";
+				document.getElementById("button-hardware").disabled = false;
+			} else {
+				document.getElementById("button-hardware").innerText = "Close file & calibrate";
+				document.getElementById("button-hardware").disabled = true;
+			}
 		}
-		else if (jsonData.calibration_state === CALIBRATION_STATE_OK) {
-			document.getElementById("button-hardware").innerText = "Close file & calibrate";
-			document.getElementById("button-hardware").disabled = false;
-		}
-		else {
-			document.getElementById("button-hardware").innerText = "Close file & calibrate";
+		else
 			document.getElementById("button-hardware").disabled = true;
-		}
 
-		// Disable test alarm if it is real alarm, or we reached high test state
-		if ((jsonData.alarm_state !== "Off" && !jsonData.alarm_state.includes("Test")) || alarmTestState >= 2) {
+		if (jsonData.stream_mode < 0) {
+			// Disable test alarm if it is real alarm, or we reached high test state
+			if ((jsonData.alarm_state !== "Off" && !jsonData.alarm_state.includes("Test")) || alarmTestState >= 2) {
+				document.getElementById("button-test").disabled = true;
+				document.getElementById("button-test").innerText = "Test alarm";
+			}
+
+			// Test button enabled
+			else {
+				document.getElementById("button-test").disabled = false;
+				document.getElementById("button-test").innerText = alarmTestState === 0 ?
+					"Test low alarm" : "Test high alarm";
+			}
+		}
+		else
 			document.getElementById("button-test").disabled = true;
-			document.getElementById("button-test").innerText = "Test alarm";
-		}
-
-		// Test button enabled
-		else {
-			document.getElementById("button-test").disabled = false;
-			document.getElementById("button-test").innerText = alarmTestState === 0 ?
-				"Test low alarm" : "Test high alarm";
-		}
 	}
 }

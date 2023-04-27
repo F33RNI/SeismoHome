@@ -290,6 +290,7 @@ class DataProcessor:
                     # Create data packet for webpage
                     dict_packet = {
                         "timestamp": round(time.time() * 1000),
+                        "stream_mode": self.web_handler.stream_mode.value,
                         "intensity_jma": float(jma_current),
                         "intensity_msk": float(msk_current),
                         "intensity_jma_peak": float(jma_peak),
@@ -300,9 +301,9 @@ class DataProcessor:
                         "alarm_state": alarm_state_str,
                         "calibration_state": calibration_state,
                         "accelerations": chunk[chunk_cursor].tolist(),
-                        "ffts": ffts_linspace[:, :, chunk_cursor].tolist(),
+                        "ffts": ffts_linspace[:, :int(self.config["low_pass_filter_cutoff"]), chunk_cursor].tolist(),
                         "fft_range_from": 0,
-                        "fft_range_to": sampling_rate // 2,
+                        "fft_range_to": int(self.config["low_pass_filter_cutoff"]),
                     }
 
                     # Append packet to the queue

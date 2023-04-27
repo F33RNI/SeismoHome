@@ -20,12 +20,14 @@ import datetime
 import glob
 import json
 import logging
+import math
 import multiprocessing
 import os.path
 import struct
 import time
 from queue import Empty
 
+import numpy as np
 from flask import Flask, Response, render_template, request, stream_with_context
 
 import DataProcessor
@@ -61,6 +63,13 @@ class WebHandler:
 
         # We set this to True if we need to close currently processed file
         self.request_file_close = multiprocessing.Value(ctypes.c_bool, False)
+
+        # -1 - real-time data stream, >= 0 - file index
+        self.stream_mode = multiprocessing.Value(ctypes.c_int32, -1)
+        self.stream_mode_last = multiprocessing.Value(ctypes.c_int32, -1)
+
+        # Temp file to stream as packets
+        self._file_for_stream = None
 
     def file_converter(self, file: dict, to_format: str) -> bool:
         """
@@ -265,14 +274,20 @@ class WebHandler:
                     # Set lock
                     self.is_file_processing = True
 
-                    # Check index
-                    if int(request.json["index"]) < 0 or int(request.json["index"]) >= len(self.files_list):
-                        logging.error("Wrong file index: " + str(int(request.json["index"])))
+                    # Try to find requested file
+                    file = None
+                    for i in range(len(self.files_list)):
+                        if self.files_list[i]["filename"] == str(request.json["filename"]):
+                            file = self.files_list[i]
+                            break
+
+                    # Check file
+                    if file is None:
+                        logging.error("Wrong filename: " + str(request.json["filename"]))
                         self.is_file_processing = False
                         return Response(status=440)
 
-                    # Extract requested file and action
-                    file = self.files_list[int(request.json["index"])]
+                    # Extract requested action
                     action = str(request.json["action"])
 
                     # Check action
@@ -303,6 +318,9 @@ class WebHandler:
                             # Delete file
                             if action == "delete":
                                 logging.info("Deleting file...")
+                                # Stop file stream
+                                self.stream_mode.value = -1
+                                time.sleep(1)
                                 os.remove(filepath)
                                 if not os.path.exists(filepath):
                                     logging.info("Deleted successfully")
@@ -380,7 +398,6 @@ class WebHandler:
                                 and filename_parts[3] == "3ch" \
                                 and filename_parts[4] == "float32" \
                                 and filename_parts[5] == "l_endian":
-
                             # Parse datetime string into a datetime object in UTC
                             dt_utc = datetime.datetime.strptime(filename_parts[0] + "__" + filename_parts[1],
                                                                 "%Y_%m_%d__%H_%M_%S").replace(tzinfo=None)
@@ -411,6 +428,7 @@ class WebHandler:
                             # Append filename, timestamp and length to list
                             dictionary = {
                                 "filename": filename,
+                                "filepath": raw_file,
                                 "timestamp_seconds": timestamp_seconds,
                                 "timestamp_start": timestamp_start,
                                 "timestamp_end": "Now" if filename == active_filename else timestamp_end,
@@ -432,6 +450,140 @@ class WebHandler:
             # Return as JSON array
             return Response(json.dumps(self.files_list), status=200, content_type="application/json")
 
+    def stream_mode_change(self) -> Response:
+        """
+        Request to change stream mode ({"filename": "-"} for real-time stream, or {"filename": "FILE"} for file)
+        :return:
+        """
+        request_filename = str(request.json["filename"])
+        logging.info("Requested stream mode: " + request_filename)
+
+        # File streaming
+        if request_filename != "-":
+            # Try to find requested file
+            file = None
+            file_index = 0
+            for i in range(len(self.files_list)):
+                if self.files_list[i]["filename"] == request_filename:
+                    file = self.files_list[i]
+                    file_index = i
+                    break
+
+            # Check file
+            if file is None:
+                self.stream_mode.value = -1
+                return Response(status=440)
+
+            # File OK
+            else:
+                self.stream_mode.value = file_index
+                return Response(status=200)
+
+        # Real-time streaming
+        else:
+            self.stream_mode.value = -1
+            return Response(status=200)
+
+    def get_file_stream_data(self, chunk,
+                             chunk_cursor,
+                             ffts_prev,
+                             ffts,
+                             sample_counter,
+                             ffts_linspace,
+                             pgas,
+                             jmas,
+                             msks,
+                             jma_peak,
+                             msk_peak) -> (str, int, int, int, int):
+        """
+        Sends file as packets stream
+        :return:
+        """
+        result = ""
+
+        # Calculate and stream file content
+        if self._file_for_stream is not None:
+            # Read 12 bytes (3 channels * 4 bytes per sample)
+            buf = self._file_for_stream.read(12)
+            if len(buf) == 12:
+                # Calculate timestamp
+                timestamp_seconds = self.files_list[self.stream_mode_last.value]["timestamp_seconds"]
+                timestamp_seconds += sample_counter / self.files_list[self.stream_mode_last.value]["sampling_rate"]
+
+                # Create data packet for webpage
+                dict_packet = {
+                    "timestamp": round(timestamp_seconds * 1000),
+                    "stream_mode": self.stream_mode.value,
+                    "intensity_jma_peak": float(jma_peak),
+                    "intensity_msk_peak": float(msk_peak),
+                    "accelerations": chunk[chunk_cursor].tolist(),
+                    "ffts": ffts_linspace[:, :, chunk_cursor].tolist(),
+                    "fft_range_from": 0,
+                    "fft_range_to": int(self.config["low_pass_filter_cutoff"]),
+                }
+
+                # Parse data
+                [acc_x] = struct.unpack("<f", bytearray(buf[0: 4]))
+                [acc_y] = struct.unpack("<f", bytearray(buf[4: 8]))
+                [acc_z] = struct.unpack("<f", bytearray(buf[8: 12]))
+
+                # Write new filtered data to buffer
+                chunk[chunk_cursor][0] = acc_x
+                chunk[chunk_cursor][1] = acc_y
+                chunk[chunk_cursor][2] = acc_z
+                chunk_cursor += 1
+
+                # Buffer is full
+                if chunk_cursor >= len(chunk):
+                    # Reset buffer position
+                    chunk_cursor = 0
+
+                    # Transpose chunk to (3, chunk_size), so len(chunk) will be = 3
+                    chunk = chunk.transpose()
+
+                    # Process each axis independently
+                    for i in range(3):
+                        # Store previous FFTs
+                        ffts_prev[i, :] = ffts[i, :]
+
+                        # Calculate FFT in JMA scale
+                        ffts[i] = DataProcessor.fft_to_jma(DataProcessor.compute_fft_mag(chunk[i]))
+
+                        # Calculate FFT gradient
+                        for fft_bin_n in range(len(ffts[i])):
+                            ffts_linspace[i][fft_bin_n] = np.linspace(ffts_prev[i][fft_bin_n],
+                                                                      ffts[i][fft_bin_n],
+                                                                      num=len(chunk[0]) + 1)
+                        # Calculate RMS value of chunk
+                        rms = np.sqrt(np.mean(np.square(chunk[i])))
+
+                        # Approximately convert EMS to peak ground acceleration
+                        pgas[i] = rms * 2. * math.sqrt(2)
+                        if pgas[i] < 0.:
+                            pgas[i] = 0.
+
+                        # Calculate intensities
+                        jmas[i] = DataProcessor.pga_to_jma(pgas[i])
+                        msks[i] = DataProcessor.jma_to_msk(jmas[i])
+
+                # Calculate intensities
+                jma_current = np.max(jmas)
+                msk_current = np.max(msks)
+
+                # Calculate maximum (peak) intensities\
+                if jma_current > jma_peak:
+                    jma_peak = jma_current
+                if msk_current > msk_peak:
+                    msk_peak = msk_current
+
+                # Increment number of sample (for timestamp calculations)
+                sample_counter += 1
+
+                # Return packet as json string
+                return json.dumps(dict_packet), chunk_cursor, sample_counter, jma_peak, msk_peak
+
+        return result, chunk_cursor, sample_counter, jma_peak, msk_peak
+
     def stream(self) -> Response:
         """
         Streams data to web
@@ -449,10 +601,96 @@ class WebHandler:
                 except Empty:
                     pass
 
+                # Reset stream mode
+                self.stream_mode.value = -1
+                self.stream_mode_last.value = -1
+
+                # chunk size = samplerate to make 1s chunks
+                chunk_size = int(self.config["sampling_rate"])
+
+                # Buffer for data from file
+                chunk = np.zeros((chunk_size, 3), dtype=np.float32)
+                chunk_cursor = 0
+                sample_counter = 0
+
+                # Intensities
+                pgas = np.zeros(3, dtype=np.float32)
+                jmas = np.zeros(3, dtype=np.float32)
+                msks = np.zeros(3, dtype=np.float32)
+                jma_peak = 0
+                msk_peak = 0
+
+                # FFTs
+                ffts_prev = np.zeros((3, chunk_size // 2 + 1), dtype=np.float32)
+                ffts = np.zeros((3, chunk_size // 2 + 1), dtype=np.float32)
+                ffts_linspace = np.zeros((3, chunk_size // 2 + 1, chunk_size + 1), dtype=np.float32)
+
                 # Start data stream
                 while True:
-                    json_str = self.json_packets_queue.get(block=True)
-                    yield "data: " + json_str + "\n\n"
+                    # Start new file and clear data
+                    if self.stream_mode.value != self.stream_mode_last.value:
+                        self.stream_mode_last.value = self.stream_mode.value
+                        # Clear data
+                        chunk.fill(0)
+                        ffts_prev.fill(0)
+                        ffts.fill(0)
+                        ffts_linspace.fill(0)
+                        chunk_cursor = 0
+                        sample_counter = 0
+                        jma_peak = 0
+                        msk_peak = 0
+
+                        # Close previous file
+                        if self._file_for_stream is not None:
+                            try:
+                                self._file_for_stream.close()
+                            except Exception as e:
+                                logging.error("Error closing file", exc_info=e)
+                            self._file_for_stream = None
+
+                        # Check index
+                        if 0 <= self.stream_mode_last.value < len(self.files_list):
+                            # Load file
+                            self._file_for_stream = open(self.files_list[self.stream_mode_last.value]["filepath"], "rb")
+
+                    # Send real-time stream
+                    if self.stream_mode.value < 0:
+                        # Read and send packet from the queue
+                        json_str = self.json_packets_queue.get(block=True)
+                        yield "data: " + json_str + "\n\n"
+
+                    # Send file stream
+                    else:
+                        # Clear queue
+                        try:
+                            while True:
+                                self.json_packets_queue.get_nowait()
+                        except Empty:
+                            pass
+
+                        # Get packet
+                        json_str, chunk_cursor, sample_counter, jma_peak, msk_peak \
+                            = self.get_file_stream_data(chunk,
+                                                        chunk_cursor,
+                                                        ffts_prev,
+                                                        ffts,
+                                                        sample_counter,
+                                                        ffts_linspace,
+                                                        pgas,
+                                                        jmas,
+                                                        msks,
+                                                        jma_peak,
+                                                        msk_peak)
+
+                        # Sleep if no more data
+                        if not json_str or len(json_str) < 0:
+                            time.sleep(0.1)
+
+                        # Send data at file sampling rate
+                        # TODO: Make it load all at ones
+                        else:
+                            time.sleep(1 / self.files_list[self.stream_mode.value]["sampling_rate"])
+                            yield "data: " + json_str + "\n\n"
 
             # Make response
             response = Response(stream(), content_type="text/event-stream")
@@ -529,6 +767,9 @@ class WebHandler:
 
         # File downloader
         self.app.add_url_rule("/download", "download", self.download_file, methods=["GET"])
+
+        # Change stream mode
+        self.app.add_url_rule("/stream_mode", "stream_mode", self.stream_mode_change, methods=["POST"])
 
         # Start server
         self.app.run(host=str(self.config["flask_server_host"]),
