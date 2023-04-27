@@ -5,8 +5,8 @@ After=multi-user.target
 [Service]
 Type=simple
 Restart=always
-WorkingDirectory=YOUR DIRECTORY HERE/SeismoHome-1.0.0-Linux-armv7l
-ExecStart=sudo YOUR DIRECTORY HERE/SeismoHome/SeismoHome-1.0.0-Linux-armv7l/SeismoHome-1.0.0-Linux-armv7l
+WorkingDirectory=YOUR DIRECTORY HERE/SeismoHome-2.0.0-Linux-armv7l
+ExecStart=sudo YOUR DIRECTORY HERE/SeismoHome/SeismoHome-2.0.0-Linux-armv7l/SeismoHome-2.0.0-Linux-armv7l
 RestartSec=5
 
 [Install]
